@@ -780,3 +780,4 @@ Sesuai prinsip transparansi rekayasa teknis, berikut daftar catatan perbedaan an
    - Menyediakan background worker integrasi IMAP/Graph API untuk otomatis mengonversi email keluhan masuk menjadi tiket HelpDeskPro.
 3. **Ekspor Laporan Kepatuhan SLA**:
    - Menyediakan fitur download laporan bulanan matriks performa dan kepatuhan SLA departemen dalam format berkas Excel (.xlsx) dan PDF.
+
