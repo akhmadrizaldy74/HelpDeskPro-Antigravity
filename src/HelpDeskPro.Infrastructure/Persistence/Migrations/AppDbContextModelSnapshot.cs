@@ -330,6 +330,16 @@ namespace HelpDeskPro.Infrastructure.Persistence.Migrations
                     b.Property<byte>("Priority")
                         .HasColumnType("tinyint");
 
+                    b.Property<DateTime?>("RatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("Rating")
+                        .HasColumnType("int");
+
+                    b.Property<string>("RatingComment")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
                     b.Property<Guid>("RequesterId")
                         .HasColumnType("uniqueidentifier");
 

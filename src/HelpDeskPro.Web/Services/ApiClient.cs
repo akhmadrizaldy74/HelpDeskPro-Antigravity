@@ -243,6 +243,19 @@ public class ApiClient : IApiClient
         return await response.Content.ReadFromJsonAsync<ApiResponse<TicketAttachmentDto>>(_jsonOptions, cancellationToken);
     }
 
+    public async Task<ApiResponse<TicketDetailDto>?> RateTicketAsync(long id, int rating, string? comment, CancellationToken cancellationToken = default)
+    {
+        var payload = new { Rating = rating, Comment = comment };
+        var response = await _httpClient.PostAsJsonAsync($"api/tickets/{id}/rate", payload, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var error = await ExtractErrorMessageAsync(response, cancellationToken);
+            return ApiResponse.Failure<TicketDetailDto>(error);
+        }
+
+        return await response.Content.ReadFromJsonAsync<ApiResponse<TicketDetailDto>>(_jsonOptions, cancellationToken);
+    }
+
     public async Task<ApiResponse<EscalationDto>?> EscalateTicketAsync(long id, string note, CancellationToken cancellationToken = default)
     {
         var payload = new { Note = note };
@@ -269,9 +282,10 @@ public class ApiClient : IApiClient
         return await response.Content.ReadFromJsonAsync<ApiResponse<DashboardSummaryDto>>(_jsonOptions, cancellationToken);
     }
 
-    public async Task<ApiResponse<IReadOnlyList<AgentWorkloadDto>>?> GetAgentWorkloadAsync(CancellationToken cancellationToken = default)
+    public async Task<ApiResponse<IReadOnlyList<AgentWorkloadDto>>?> GetAgentWorkloadAsync(int? days = null, CancellationToken cancellationToken = default)
     {
-        var response = await _httpClient.GetAsync("api/dashboard/agent-workload", cancellationToken);
+        var url = days.HasValue ? $"api/dashboard/agent-workload?days={days.Value}" : "api/dashboard/agent-workload";
+        var response = await _httpClient.GetAsync(url, cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
             var error = await ExtractErrorMessageAsync(response, cancellationToken);

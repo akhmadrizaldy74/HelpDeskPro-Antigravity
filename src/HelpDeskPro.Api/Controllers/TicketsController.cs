@@ -5,6 +5,7 @@ using HelpDeskPro.Application.Features.Tickets.Commands.AssignTicket;
 using HelpDeskPro.Application.Features.Tickets.Commands.ChangeTicketStatus;
 using HelpDeskPro.Application.Features.Tickets.Commands.CreateTicket;
 using HelpDeskPro.Application.Features.Tickets.Commands.EscalateTicket;
+using HelpDeskPro.Application.Features.Tickets.Commands.RateTicket;
 using HelpDeskPro.Application.Features.Tickets.Commands.UpdateTicket;
 using HelpDeskPro.Application.Features.Tickets.Commands.UploadTicketAttachment;
 using HelpDeskPro.Application.Features.Tickets.Models;
@@ -25,6 +26,7 @@ public record ChangeTicketStatusRequest(TicketStatus Status, string? Reason, byt
 public record AddCommentRequest(string Body, bool IsInternal);
 public record UpdateTicketRequest(string Title, string? Description, int CategoryId, TicketPriority Priority, byte[]? RowVersion);
 public record EscalateTicketRequest(string Note);
+public record RateTicketRequest(int Rating, string? Comment);
 
 [Authorize]
 public class TicketsController : ApiControllerBase
@@ -219,6 +221,24 @@ public class TicketsController : ApiControllerBase
         CancellationToken cancellationToken)
     {
         var command = new EscalateTicketCommand(id, request.Note);
+        var result = await Mediator.Send(command, cancellationToken);
+        return Ok(ApiResponse.Ok(result, TraceId));
+    }
+
+    [HttpPost("{id:long}/rate")]
+    [Authorize(Roles = "Requester,Admin")]
+    [ProducesResponseType(typeof(ApiResponse<TicketDetailDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<ApiResponse<TicketDetailDto>>> Rate(
+        long id,
+        [FromBody] RateTicketRequest request,
+        CancellationToken cancellationToken)
+    {
+        var command = new RateTicketCommand(id, request.Rating, request.Comment);
         var result = await Mediator.Send(command, cancellationToken);
         return Ok(ApiResponse.Ok(result, TraceId));
     }

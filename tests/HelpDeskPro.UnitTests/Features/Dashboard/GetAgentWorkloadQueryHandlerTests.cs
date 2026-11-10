@@ -102,5 +102,52 @@ public class GetAgentWorkloadQueryHandlerTests
         workload2.ActiveTicketCount.Should().Be(0);
         workload2.SlaBreachedCount.Should().Be(0);
     }
+
+    [Fact]
+    public async Task Handle_CalculatesAverageRatingAndRatedCountPerAgent()
+    {
+        // Arrange
+        _currentUserService.Role.Returns("Admin");
+
+        var agent = new ApplicationUser { Id = _agent1Id, FullName = "Agent One", Email = "agent1@helpdesk.local", DepartmentId = 1, IsActive = true };
+        _userManager.GetUsersInRoleAsync("Agent").Returns(new List<ApplicationUser> { agent });
+
+        var tickets = new List<Ticket>
+        {
+            // Rated tickets for Agent 1: 5 and 4 -> Average 4.5
+            new()
+            {
+                Id = 10,
+                TicketNo = "HD-2026-000010",
+                Status = TicketStatus.Closed,
+                AssigneeId = _agent1Id,
+                Rating = 5,
+                RatedAt = _utcNow.AddDays(-2)
+            },
+            new()
+            {
+                Id = 11,
+                TicketNo = "HD-2026-000011",
+                Status = TicketStatus.Closed,
+                AssigneeId = _agent1Id,
+                Rating = 4,
+                RatedAt = _utcNow.AddDays(-5)
+            }
+        };
+
+        var ticketSet = tickets.AsTestDbSet();
+        _context.Tickets.Returns(ticketSet);
+
+        var handler = new GetAgentWorkloadQueryHandler(_context, _currentUserService, _dateTimeProvider, _userManager);
+
+        // Act
+        var result = await handler.Handle(new GetAgentWorkloadQuery(30), CancellationToken.None);
+
+        // Assert
+        result.Should().HaveCount(1);
+        var workload = result[0];
+        workload.AverageRating.Should().Be(4.5);
+        workload.RatedTicketCount.Should().Be(2);
+    }
 }
 

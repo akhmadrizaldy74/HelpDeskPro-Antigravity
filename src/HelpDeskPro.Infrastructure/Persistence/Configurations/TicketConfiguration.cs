@@ -44,6 +44,16 @@ public class TicketConfiguration : IEntityTypeConfiguration<Ticket>
         builder.Property(t => t.EscalationLevel)
             .HasDefaultValue((byte)0);
 
+        builder.Property(t => t.Rating)
+            .IsRequired(false);
+
+        builder.Property(t => t.RatingComment)
+            .HasMaxLength(500)
+            .IsRequired(false);
+
+        builder.Property(t => t.RatedAt)
+            .IsRequired(false);
+
         builder.Property(t => t.RowVersion)
             .IsRowVersion()
             .IsConcurrencyToken();

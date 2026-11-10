@@ -996,6 +996,38 @@ public class TicketsControllerIntegrationTests : IClassFixture<WebApplicationFac
         notif2.IsRead.Should().BeTrue();
     }
 
+    [Fact]
+    public async Task RateTicket_WhenResolvedAndByRequester_ReturnsOkAndTicketIsClosed()
+    {
+        // Arrange
+        var ticket = new Ticket
+        {
+            Id = 888,
+            TicketNo = "HD-2026-000888",
+            Title = "Tiket untuk dirating",
+            Status = TicketStatus.Resolved,
+            RequesterId = _testUserId,
+            ResolvedAt = DateTime.UtcNow.AddHours(-1)
+        };
+
+        var client = CreateCustomClient(userId: _testUserId, role: "Requester", seedTickets: new List<Ticket> { ticket });
+
+        var payload = new { Rating = 5, Comment = "Pelayanan luar biasa mantap!" };
+
+        // Act
+        var response = await client.PostAsJsonAsync("/api/tickets/888/rate", payload);
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var content = await response.Content.ReadFromJsonAsync<ApiResponse<TicketDetailDto>>(_jsonOptions);
+        content.Should().NotBeNull();
+        content!.Success.Should().BeTrue();
+        content.Data.Should().NotBeNull();
+        content.Data!.Rating.Should().Be(5);
+        content.Data.RatingComment.Should().Be("Pelayanan luar biasa mantap!");
+        content.Data.Status.Should().Be(TicketStatus.Closed);
+    }
+
     private sealed class TestAtomicTicketNumberGenerator : ITicketNumberGenerator
     {
         private readonly int _year;

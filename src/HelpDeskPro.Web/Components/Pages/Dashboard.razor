@@ -136,6 +136,7 @@
                                         <th class="text-center" style="width: 100px;">Tiket aktif</th>
                                         <th class="text-center" style="width: 100px;">SLA lewat</th>
                                         <th class="text-center" style="width: 110px;">Status beban</th>
+                                        <th class="text-center" style="width: 120px;">Kepuasan</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -160,6 +161,20 @@
                                                 else
                                                 {
                                                     <span class="load-badge load-normal">Normal</span>
+                                                }
+                                            </td>
+                                            <td class="text-center font-mono">
+                                                @if (agent.AverageRating.HasValue && agent.RatedTicketCount > 0)
+                                                {
+                                                    <span class="d-inline-flex align-center gap-1 font-weight-semibold" style="color: #D97706; font-size: 13px;">
+                                                        <MudIcon Icon="@Icons.Material.Filled.Star" Style="font-size: 14px; color: #F59E0B;" />
+                                                        <span>@agent.AverageRating.Value.ToString("0.0")</span>
+                                                        <span class="text-secondary font-weight-normal" style="font-size: 11px;">(@agent.RatedTicketCount)</span>
+                                                    </span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="text-secondary">-</span>
                                                 }
                                             </td>
                                         </tr>
@@ -279,7 +294,7 @@
         try
         {
             var summaryTask = ApiClient.GetDashboardSummaryAsync(_periodDays);
-            var workloadTask = ApiClient.GetAgentWorkloadAsync();
+            var workloadTask = ApiClient.GetAgentWorkloadAsync(_periodDays);
             var escalationTask = ApiClient.GetPendingEscalationsAsync();
 
             await Task.WhenAll(summaryTask, workloadTask, escalationTask);
@@ -415,9 +430,9 @@
 
     private static List<AgentWorkloadDto> GetFallbackWorkload() => new()
     {
-        new(Guid.NewGuid(), "Agus Pratama", "agus.pratama@helpdeskpro.local", 12, 1),
-        new(Guid.NewGuid(), "Dewi Lestari", "dewi.lestari@helpdeskpro.local", 14, 2),
-        new(Guid.NewGuid(), "Rina Kartika", "rina.kartika@helpdeskpro.local", 8, 0)
+        new(Guid.NewGuid(), "Agus Pratama", "agus.pratama@helpdeskpro.local", 12, 1, 4.8, 15),
+        new(Guid.NewGuid(), "Dewi Lestari", "dewi.lestari@helpdeskpro.local", 14, 2, 4.6, 18),
+        new(Guid.NewGuid(), "Rina Kartika", "rina.kartika@helpdeskpro.local", 8, 0, 5.0, 9)
     };
 
     private static List<PendingEscalationDto> GetFallbackEscalations() => new()

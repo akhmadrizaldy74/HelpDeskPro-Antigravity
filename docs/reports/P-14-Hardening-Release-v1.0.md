@@ -80,3 +80,4 @@ Seluruh test suite berhasil dijalankan dengan menggunakan Coverlet dan diekstrak
    `feat(release): initial release version 1.0.0` (322 files, 31.436 insertions).
 3. **Git Tag:** Dibuat tag teranotasi `v1.0.0` dan `1.0.0`.
 4. **Dokumentasi Rilis:** Tersedia lengkap pada [docs/release-notes/v1.0.md](file:///c:/Users/Akhmad%20Rizaldy/.gemini/antigravity-ide/scratch/HelpDeskPro-Antigravity/HelpDeskPro-Antigravity/docs/release-notes/v1.0.md).
+

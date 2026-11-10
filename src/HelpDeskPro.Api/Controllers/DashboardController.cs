@@ -23,9 +23,10 @@ public class DashboardController : ApiControllerBase
 
     [HttpGet("agent-workload")]
     public async Task<ActionResult<ApiResponse<IReadOnlyList<AgentWorkloadDto>>>> GetAgentWorkload(
+        [FromQuery] int? days = null,
         CancellationToken cancellationToken = default)
     {
-        var result = await Mediator.Send(new GetAgentWorkloadQuery(), cancellationToken);
+        var result = await Mediator.Send(new GetAgentWorkloadQuery(days), cancellationToken);
         return HandleResult(result);
     }
 

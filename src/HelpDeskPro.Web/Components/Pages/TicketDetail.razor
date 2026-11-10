@@ -127,6 +127,19 @@
                         </MudButton>
                     }
 
+                    @* Rate Ticket (Requester / Admin when Resolved) *@
+                    @if (CanRate())
+                    {
+                        <MudButton Variant="Variant.Filled" 
+                                   Color="Color.Warning" 
+                                   StartIcon="@Icons.Material.Filled.Star" 
+                                   OnClick="@OpenRateDialogAsync"
+                                   Disabled="@_isActionBusy"
+                                   Style="text-transform: none; border-radius: 4px; font-weight: 600;">
+                            Beri rating & Tutup
+                        </MudButton>
+                    }
+
                     @* 4. Escalate (Agent / Supervisor / Admin) *@
                     @if (CanEscalate())
                     {
@@ -147,6 +160,29 @@
         <div class="ticket-detail-layout">
             <!-- Left Main Column: Description, Attachments, Timeline, Comment Box -->
             <div class="ticket-detail-main">
+                @if (CanRate())
+                {
+                    <div class="detail-card mb-3 pa-4" style="background-color: #FEF3C7; border: 1px solid #FDE68A; border-radius: 6px;">
+                        <div class="d-flex align-center justify-space-between flex-wrap gap-2">
+                            <div class="d-flex align-center gap-3">
+                                <MudIcon Icon="@Icons.Material.Filled.RateReview" Color="Color.Warning" Size="Size.Medium" />
+                                <div>
+                                    <MudText Typo="Typo.subtitle2" Style="font-weight: 600; color: #92400E;">Tiket telah diselesaikan oleh teknisi</MudText>
+                                    <MudText Typo="Typo.caption" Style="color: #B45309;">Berikan rating kepuasan Anda (1–5 bintang) untuk menutup tiket ini secara permanen.</MudText>
+                                </div>
+                            </div>
+                            <MudButton Variant="Variant.Filled" 
+                                       Color="Color.Warning" 
+                                       Size="Size.Small" 
+                                       StartIcon="@Icons.Material.Filled.Star"
+                                       OnClick="@OpenRateDialogAsync" 
+                                       Style="text-transform: none; font-weight: 600;">
+                                Beri Rating Sekarang
+                            </MudButton>
+                        </div>
+                    </div>
+                }
+
                 <!-- Description Card -->
                 <div class="detail-card">
                     <MudText Typo="Typo.subtitle2" Style="font-weight: 600; color: #1F1F1F; margin-bottom: 8px;">
@@ -318,6 +354,25 @@
                             <StatusBadge Status="@_ticket.Status" />
                         </div>
                     </div>
+
+                    @if (_ticket.Rating.HasValue)
+                    {
+                        <!-- Rating Kepuasan -->
+                        <div class="property-row">
+                            <span class="prop-label">Rating</span>
+                            <div class="prop-value d-flex align-center gap-1 font-medium" style="color: #D97706;">
+                                <MudIcon Icon="@Icons.Material.Filled.Star" Style="font-size: 16px; color: #F59E0B;" />
+                                <span>@_ticket.Rating / 5</span>
+                            </div>
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(_ticket.RatingComment))
+                        {
+                            <div class="pa-2 mt-1 mb-2" style="background-color: #FEF3C7; border-radius: 4px; font-size: 12px; color: #92400E;">
+                                <div class="font-weight-medium" style="font-size: 11px; margin-bottom: 2px;">Ulasan Pemohon:</div>
+                                <div>"@_ticket.RatingComment"</div>
+                            </div>
+                        }
+                    }
 
                     <!-- Prioritas -->
                     <div class="property-row">
@@ -639,6 +694,45 @@
         _ticket != null && 
         _ticket.Status != TicketStatus.Closed && 
         _ticket.Status != TicketStatus.Cancelled;
+
+    private bool CanRate()
+    {
+        if (_ticket == null) return false;
+        if (_ticket.Status != TicketStatus.Resolved) return false;
+        if (_ticket.Rating.HasValue) return false;
+
+        var isRequester = string.Equals(_userRole, "Requester", StringComparison.OrdinalIgnoreCase) && _ticket.RequesterId == _currentUserId;
+        var isAdmin = string.Equals(_userRole, "Admin", StringComparison.OrdinalIgnoreCase);
+
+        return isRequester || isAdmin;
+    }
+
+    private async Task OpenRateDialogAsync()
+    {
+        if (_ticket == null) return;
+
+        var parameters = new DialogParameters<HelpDeskPro.Web.Components.Tickets.RatingDialog>
+        {
+            { x => x.TicketId, _ticket.Id },
+            { x => x.TicketNo, _ticket.TicketNo }
+        };
+
+        var options = new DialogOptions
+        {
+            CloseButton = true,
+            MaxWidth = MaxWidth.Small,
+            FullWidth = true
+        };
+
+        var dialog = await DialogService.ShowAsync<HelpDeskPro.Web.Components.Tickets.RatingDialog>("Rating Kepuasan", parameters, options);
+        var result = await dialog.Result;
+
+        if (result != null && !result.Canceled && result.Data is TicketDetailDto updated)
+        {
+            _ticket = updated;
+            StateHasChanged();
+        }
+    }
 
     private bool IsStaff() =>
         string.Equals(_userRole, "Agent", StringComparison.OrdinalIgnoreCase) || 

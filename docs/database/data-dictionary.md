@@ -78,6 +78,9 @@ erDiagram
         int TotalPausedMinutes "Cumulative paused time in minutes"
         bit IsSlaBreached "Indicates if SLA resolution breached"
         tinyint EscalationLevel "Current escalation level (default: 0)"
+        int Rating "Satisfaction rating 1-5 (nullable)"
+        nvarchar(500) RatingComment "Satisfaction review comment (nullable)"
+        datetime2 RatedAt "Timestamp when rated (nullable)"
         rowversion RowVersion "Optimistic concurrency token"
         datetime2 CreatedAt "Audit creation timestamp (UTC)"
         nvarchar(100) CreatedBy "Audit created by"
@@ -229,6 +232,9 @@ Menyimpan seluruh data transaksi tiket bantuan IT.
 | `TotalPausedMinutes`| `int` | Tidak | `0` | Akumulasi durasi jeda waktu selama Pending |
 | `IsSlaBreached` | `bit` | Tidak | `0` | Penanda jika resolusi melewati SLA |
 | `EscalationLevel`| `tinyint` | Tidak | `0` | Tingkat eskalasi yang sedang aktif |
+| `Rating` | `int` | Ya | `NULL` | Rating kepuasan pemohon (skala 1–5 bintang, CR-001) |
+| `RatingComment` | `nvarchar(500)` | Ya | `NULL` | Komentar ulasan kepuasan pemohon (maks 500 karakter, CR-001) |
+| `RatedAt` | `datetime2` | Ya | `NULL` | Waktu pemberian rating oleh pemohon tiket dalam UTC (CR-001) |
 | `RowVersion` | `rowversion` | Tidak | - | Token konkurensi optimistik (`IsRowVersion()`) |
 | `CreatedAt` | `datetime2` | Tidak | - | Waktu pembuatan tiket (UTC) |
 | `CreatedBy` | `nvarchar(100)` | Ya | `NULL` | Nama/ID pembuat tiket |
@@ -333,4 +339,15 @@ Menjamin nomor tiket unik format tahunan bebas race condition.
 |---|---|:---:|---|---|
 | `Year` | `int` | Tidak | - | Primary Key (Tahun kalender, misal 2026) |
 | `LastNumber` | `int` | Tidak | `0` | Nomor urut terakhir yang berhasil diterbitkan |
+
+---
+
+## 3. Changelog Skema Basis Data
+
+| Tanggal | ID Perubahan / Migration | Tabel Terkait | Deskripsi Perubahan |
+|---|---|---|---|
+| **09/11/2026** | `20261109154702_InitialCreate` | Seluruh Tabel | Skema awal basis data HelpDeskPro (11 tabel) |
+| **09/11/2026** | `20261109174605_AddIsActiveToUsers` | `Users` | Penambahan kolom `IsActive` (bit, default 1) pada tabel `Users` |
+| **10/11/2026** | `20261110163426_AddTicketRating` | `Tickets` | **CR-001:** Penambahan kolom `Rating` (int, nullable), `RatingComment` (nvarchar(500), nullable), dan `RatedAt` (datetime2, nullable) pada tabel `Tickets` |
+
 

@@ -26,6 +26,9 @@ public class TicketDetailDto
     public int TotalPausedMinutes { get; set; }
     public bool IsSlaBreached { get; set; }
     public byte EscalationLevel { get; set; }
+    public int? Rating { get; set; }
+    public string? RatingComment { get; set; }
+    public DateTime? RatedAt { get; set; }
     public byte[] RowVersion { get; set; } = Array.Empty<byte>();
     public DateTime CreatedAt { get; set; }
     public string? CreatedBy { get; set; }

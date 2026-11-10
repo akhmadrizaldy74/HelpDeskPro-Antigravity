@@ -5,6 +5,8 @@ public sealed record AgentWorkloadDto(
     string FullName,
     string Email,
     int ActiveTicketCount,
-    int SlaBreachedCount
+    int SlaBreachedCount,
+    double? AverageRating = null,
+    int RatedTicketCount = 0
 );
 

@@ -34,6 +34,9 @@ public class Ticket : AuditableEntity<long>
     public int TotalPausedMinutes { get; set; }
     public bool IsSlaBreached { get; set; }
     public byte EscalationLevel { get; set; }
+    public int? Rating { get; set; }
+    public string? RatingComment { get; set; }
+    public DateTime? RatedAt { get; set; }
     public byte[] RowVersion { get; set; } = Array.Empty<byte>();
 
     public Category Category { get; set; } = null!;
@@ -438,5 +441,69 @@ public class Ticket : AuditableEntity<long>
             // Perubahan prioritas TIDAK mengubah SLA due date yang sudah ada
             Priority = priority;
         }
+    }
+
+    public void Rate(
+        int rating,
+        string? comment,
+        Guid ratedById,
+        string userRole,
+        DateTime utcNow)
+    {
+        if (Status != TicketStatus.Resolved)
+        {
+            throw new BusinessRuleException($"Rating hanya dapat diberikan pada tiket yang berstatus Resolved. Status tiket saat ini: {Status}.");
+        }
+
+        if (Rating.HasValue)
+        {
+            throw new BusinessRuleException("Tiket ini sudah pernah diberi rating kepuasan.");
+        }
+
+        if (userRole == "Requester" && RequesterId != ratedById)
+        {
+            throw new BusinessRuleException("Hanya pemohon tiket yang dapat memberikan rating kepuasan.");
+        }
+        else if (userRole != "Requester" && userRole != "Admin")
+        {
+            throw new BusinessRuleException("Role Anda tidak memiliki wewenang untuk memberikan rating kepuasan.");
+        }
+
+        if (rating < 1 || rating > 5)
+        {
+            throw new BusinessRuleException("Rating kepuasan harus bernilai antara 1 dan 5.");
+        }
+
+        var trimmedComment = string.IsNullOrWhiteSpace(comment) ? null : comment.Trim();
+        if (trimmedComment != null && trimmedComment.Length > 500)
+        {
+            throw new BusinessRuleException("Komentar rating tidak boleh melebihi 500 karakter.");
+        }
+
+        Rating = rating;
+        RatingComment = trimmedComment;
+        RatedAt = utcNow;
+
+        var oldStatus = Status;
+        Status = TicketStatus.Closed;
+        ClosedAt = utcNow;
+
+        Histories.Add(new TicketHistory
+        {
+            FieldName = "Rating",
+            OldValue = null,
+            NewValue = $"{rating}/5",
+            ChangedById = ratedById,
+            ChangedAt = utcNow
+        });
+
+        Histories.Add(new TicketHistory
+        {
+            FieldName = "Status",
+            OldValue = oldStatus.ToString(),
+            NewValue = TicketStatus.Closed.ToString(),
+            ChangedById = ratedById,
+            ChangedAt = utcNow
+        });
     }
 }

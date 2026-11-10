@@ -1,0 +1,118 @@
+@namespace HelpDeskPro.Web.Components.Tickets
+@inject ISnackbar Snackbar
+@inject IApiClient ApiClient
+
+<MudDialog>
+    <DialogContent>
+        <div class="dialog-form-body">
+            <MudText Typo="Typo.h6" Class="dialog-title mb-2">
+                Rating Kepuasan Layanan
+            </MudText>
+            <MudText Typo="Typo.body2" Class="text-secondary mb-4">
+                Beri penilaian untuk penanganan tiket <strong>@TicketNo</strong>. Memberi rating otomatis menutup tiket ini secara final.
+            </MudText>
+
+            @if (!string.IsNullOrWhiteSpace(_errorMessage))
+            {
+                <MudAlert Severity="Severity.Error" Dense="true" Class="mb-3" ShowCloseIcon="true" CloseIconClicked="@(() => _errorMessage = null)">
+                    @_errorMessage
+                </MudAlert>
+            }
+
+            <div class="d-flex flex-column align-center justify-center py-3 mb-3" style="background-color: #F9FAFB; border-radius: 6px;">
+                <MudRating @bind-SelectedValue="_rating" MaxValue="5" Size="Size.Large" Color="Color.Warning" />
+                <MudText Typo="Typo.caption" Class="mt-2 text-secondary">
+                    @GetRatingLabel(_rating)
+                </MudText>
+            </div>
+
+            <MudTextField T="string"
+                          Label="Ulasan / Komentar (opsional)"
+                          @bind-Value="_comment"
+                          Lines="3"
+                          MaxLength="500"
+                          Counter="500"
+                          Immediate="true"
+                          HelperText="Bagikan pengalaman atau apresiasi Anda terhadap penyelesaian tiket ini."
+                          Disabled="@_isSubmitting" />
+        </div>
+    </DialogContent>
+    <DialogActions>
+        <MudButton Variant="Variant.Outlined" Color="Color.Default" OnClick="Cancel" Disabled="@_isSubmitting" Size="Size.Small">
+            Batal
+        </MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Warning" OnClick="SubmitAsync" Disabled="@(_isSubmitting || _rating < 1)" Size="Size.Small">
+            @if (_isSubmitting)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                <span>Mengirim...</span>
+            }
+            else
+            {
+                <span>Kirim Rating & Tutup Tiket</span>
+            }
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private MudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter]
+    public long TicketId { get; set; }
+
+    [Parameter]
+    public string TicketNo { get; set; } = string.Empty;
+
+    private int _rating = 5;
+    private string? _comment;
+    private bool _isSubmitting;
+    private string? _errorMessage;
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private static string GetRatingLabel(int rating) => rating switch
+    {
+        1 => "1/5 — Sangat Tidak Puas",
+        2 => "2/5 — Tidak Puas",
+        3 => "3/5 — Cukup",
+        4 => "4/5 — Puas",
+        5 => "5/5 — Sangat Puas",
+        _ => "Pilih bintang 1 s.d. 5"
+    };
+
+    private async Task SubmitAsync()
+    {
+        if (_rating < 1 || _rating > 5)
+        {
+            _errorMessage = "Pilih rating bintang 1 sampai 5.";
+            return;
+        }
+
+        _isSubmitting = true;
+        _errorMessage = null;
+
+        try
+        {
+            var res = await ApiClient.RateTicketAsync(TicketId, _rating, _comment);
+            if (res?.Success == true)
+            {
+                Snackbar.Add("Terima kasih! Rating berhasil dikirim dan tiket telah ditutup.", Severity.Success);
+                MudDialog.Close(DialogResult.Ok(res.Data));
+            }
+            else
+            {
+                _errorMessage = res?.Errors is { Count: > 0 } ? string.Join("; ", res.Errors) : "Gagal mengirim rating.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ex.Message;
+        }
+        finally
+        {
+            _isSubmitting = false;
+        }
+    }
+}

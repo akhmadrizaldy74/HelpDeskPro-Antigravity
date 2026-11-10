@@ -75,6 +75,10 @@ public class GetAgentWorkloadQueryHandler : IRequestHandler<GetAgentWorkloadQuer
         var agentIds = agentList.Select(a => a.Id).ToList();
 
         var now = _dateTimeProvider.UtcNow;
+        DateTime? fromDate = request.Days.HasValue && request.Days.Value > 0
+            ? now.AddDays(-request.Days.Value)
+            : null;
+
         var stats = await _context.Tickets.AsNoTracking()
             .Where(t => t.AssigneeId != null && agentIds.Contains(t.AssigneeId.Value) &&
                 (t.Status == TicketStatus.Open || t.Status == TicketStatus.InProgress || t.Status == TicketStatus.Pending))
@@ -89,15 +93,39 @@ public class GetAgentWorkloadQueryHandler : IRequestHandler<GetAgentWorkloadQuer
 
         var statsMap = stats.ToDictionary(s => s.AgentId);
 
+        var ratingQuery = _context.Tickets.AsNoTracking()
+            .Where(t => t.AssigneeId != null && agentIds.Contains(t.AssigneeId.Value) && t.Rating != null);
+
+        if (fromDate.HasValue)
+        {
+            ratingQuery = ratingQuery.Where(t => t.RatedAt >= fromDate.Value || (t.RatedAt == null && t.ClosedAt >= fromDate.Value));
+        }
+
+        var ratingStats = await ratingQuery
+            .GroupBy(t => t.AssigneeId!.Value)
+            .Select(g => new
+            {
+                AgentId = g.Key,
+                Count = g.Count(),
+                Average = g.Average(t => (double)t.Rating!.Value)
+            })
+            .ToListAsync(cancellationToken);
+
+        var ratingMap = ratingStats.ToDictionary(r => r.AgentId);
+
         var result = agentList.Select(agent =>
         {
             statsMap.TryGetValue(agent.Id, out var stat);
+            ratingMap.TryGetValue(agent.Id, out var ratingStat);
+
             return new AgentWorkloadDto(
                 agent.Id,
                 agent.FullName,
                 agent.Email ?? string.Empty,
                 stat?.ActiveCount ?? 0,
-                stat?.BreachedCount ?? 0
+                stat?.BreachedCount ?? 0,
+                ratingStat != null ? Math.Round(ratingStat.Average, 1) : null,
+                ratingStat?.Count ?? 0
             );
         })
         .OrderByDescending(x => x.ActiveTicketCount)
