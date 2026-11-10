@@ -91,3 +91,4 @@ Total: 376 passed (100% Green, 0 failed, 0 skipped)
 
 ### Hasil Smoke Test Manual UI
 Semua rute utama (/login, /dashboard, /tickets/new, /tickets/1, /escalations, /admin/holidays) telah diverifikasi via headless Chrome dengan status HTTP 200 dan tampilan visual sesuai standar UI HelpDeskPro.
+
