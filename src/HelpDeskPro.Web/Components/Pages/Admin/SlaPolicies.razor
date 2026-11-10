@@ -1,0 +1,161 @@
+@page "/admin/sla"
+@page "/admin/sla-policies"
+@page "/master/sla-policies"
+@inject IApiClient ApiClient
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Kebijakan SLA — HelpDeskPro</PageTitle>
+
+<div class="admin-page">
+    <div class="d-flex justify-space-between align-center mb-4">
+        <div>
+            <h1 class="page-main-heading">Kebijakan SLA (Service Level Agreement)</h1>
+            <p class="page-subheading">Atur target batas waktu respons awal dan resolusi tiket berdasarkan tingkat prioritas</p>
+        </div>
+        <div>
+            <MudTooltip Text="Muat ulang kebijakan">
+                <MudIconButton Icon="@Icons.Material.Outlined.Refresh" 
+                               Size="Size.Small" 
+                               Variant="Variant.Outlined" 
+                               OnClick="@LoadPolicies" 
+                               Disabled="@_isLoading" />
+            </MudTooltip>
+        </div>
+    </div>
+
+    <MudAlert Severity="Severity.Info" Dense="true" Class="mb-4">
+        Pembaruan target waktu pada kebijakan SLA hanya memengaruhi tiket baru yang dibuat setelah waktu penyimpanan (FR-34). Tiket aktif yang sudah berjalan tetap menggunakan tenggat waktu lama.
+    </MudAlert>
+
+    @if (_isLoading && _policies.Count == 0)
+    {
+        <div class="dashboard-panel">
+            <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="40px" Class="mb-2" />
+            <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="40px" Class="mb-2" />
+            <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="40px" />
+        </div>
+    }
+    else
+    {
+        <div class="dashboard-panel">
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 140px;">Prioritas</th>
+                            <th style="width: 220px;">Target respons pertama</th>
+                            <th style="width: 220px;">Target penyelesaian (resolusi)</th>
+                            <th>Keterangan waktu</th>
+                            <th style="width: 120px;" class="text-right">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var pol in _policies)
+                        {
+                            <tr>
+                                <td>
+                                    <PriorityBadge Priority="@pol.Priority" />
+                                </td>
+                                <td>
+                                    <div class="font-mono font-weight-semibold">@FormatMinutes(pol.ResponseTimeMinutes)</div>
+                                    <div class="text-secondary font-mono" style="font-size: 11px;">@pol.ResponseTimeMinutes menit</div>
+                                </td>
+                                <td>
+                                    <div class="font-mono font-weight-semibold">@FormatMinutes(pol.ResolutionTimeMinutes)</div>
+                                    <div class="text-secondary font-mono" style="font-size: 11px;">@pol.ResolutionTimeMinutes menit</div>
+                                </td>
+                                <td>
+                                    <span class="text-secondary" style="font-size: 12px;">
+                                        @GetPriorityDescription(pol.Priority)
+                                    </span>
+                                </td>
+                                <td class="text-right">
+                                    <button type="button" 
+                                            class="btn-action-text" 
+                                            @onclick="@(() => OpenEditDialog(pol))"
+                                            title="Ubah target SLA">
+                                        Ubah
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private bool _isLoading = false;
+    private List<SlaPolicyDto> _policies = GetFallbackPolicies();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadPolicies();
+    }
+
+    private async Task LoadPolicies()
+    {
+        _isLoading = true;
+        try
+        {
+            var res = await ApiClient.GetSlaPoliciesAsync();
+            if (res?.Success == true && res.Data != null && res.Data.Count > 0)
+            {
+                _policies = res.Data.OrderBy(p => (int)p.Priority).ToList();
+            }
+            else
+            {
+                _policies = GetFallbackPolicies();
+            }
+        }
+        catch
+        {
+            _policies = GetFallbackPolicies();
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task OpenEditDialog(SlaPolicyDto pol)
+    {
+        var parameters = new DialogParameters<SlaPolicyFormDialog> { { x => x.Policy, pol } };
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.ExtraSmall, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<SlaPolicyFormDialog>("Ubah kebijakan SLA", parameters, options);
+        var result = await dialog.Result;
+        if (result != null && !result.Canceled)
+        {
+            await LoadPolicies();
+        }
+    }
+
+    private static string FormatMinutes(int minutes)
+    {
+        if (minutes < 60) return $"{minutes} menit";
+        var hours = minutes / 60.0;
+        if (hours < 24) return $"{hours:0.#} jam";
+        var days = hours / 24.0;
+        return $"{days:0.#} hari ({hours:0} jam)";
+    }
+
+    private static string GetPriorityDescription(TicketPriority priority) => priority switch
+    {
+        TicketPriority.Critical => "Kendala sistem kritikal yang melumpuhkan operasional utama kantor",
+        TicketPriority.High => "Kendala fungsi penting yang menghambat pekerjaan banyak pengguna",
+        TicketPriority.Medium => "Permintaan standar atau kendala yang memiliki solusi sementara (workaround)",
+        TicketPriority.Low => "Pertanyaan umum, panduan aplikasi, atau permohonan fitur minor",
+        _ => "-"
+    };
+
+    private static List<SlaPolicyDto> GetFallbackPolicies() => new()
+    {
+        new(1, TicketPriority.Critical, "Critical", 30, 240),
+        new(2, TicketPriority.High, "High", 120, 480),
+        new(3, TicketPriority.Medium, "Medium", 240, 1440),
+        new(4, TicketPriority.Low, "Low", 480, 2880)
+    };
+}

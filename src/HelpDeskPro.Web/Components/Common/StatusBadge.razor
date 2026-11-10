@@ -1,0 +1,59 @@
+@namespace HelpDeskPro.Web.Components.Common
+
+<span class="status-badge" style="background-color: @GetBgColor(); color: @GetTextColor(); border: 1px solid @GetBorderColor();">
+    @GetText()
+</span>
+
+@code {
+    [Parameter, EditorRequired] public TicketStatus Status { get; set; }
+
+    private string GetText() => Status switch
+    {
+        TicketStatus.Open => "Open",
+        TicketStatus.InProgress => "In Progress",
+        TicketStatus.Pending => "Pending",
+        TicketStatus.Resolved => "Resolved",
+        TicketStatus.Closed => "Closed",
+        TicketStatus.Cancelled => "Cancelled",
+        _ => Status.ToString()
+    };
+
+    private string GetTextColor() => Status switch
+    {
+        TicketStatus.Open => AppTheme.StatusOpenText,
+        TicketStatus.InProgress => AppTheme.StatusInProgressText,
+        TicketStatus.Pending => AppTheme.StatusPendingText,
+        TicketStatus.Resolved => AppTheme.StatusResolvedText,
+        TicketStatus.Closed => AppTheme.StatusClosedText,
+        TicketStatus.Cancelled => AppTheme.StatusCancelledText,
+        _ => AppTheme.TextPrimary
+    };
+
+    private string GetBgColor() => Status switch
+    {
+        TicketStatus.Open => AppTheme.StatusOpenBg,
+        TicketStatus.InProgress => AppTheme.StatusInProgressBg,
+        TicketStatus.Pending => AppTheme.StatusPendingBg,
+        TicketStatus.Resolved => AppTheme.StatusResolvedBg,
+        TicketStatus.Closed => AppTheme.StatusClosedBg,
+        TicketStatus.Cancelled => AppTheme.StatusCancelledBg,
+        _ => AppTheme.Background
+    };
+
+    private string GetBorderColor() => GetTextColor() + "33";
+}
+
+<style>
+    .status-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 2px 8px;
+        font-size: 12px;
+        font-weight: 500;
+        line-height: 1.4;
+        border-radius: 4px;
+        white-space: nowrap;
+        font-family: 'IBM Plex Sans', sans-serif;
+    }
+</style>
+

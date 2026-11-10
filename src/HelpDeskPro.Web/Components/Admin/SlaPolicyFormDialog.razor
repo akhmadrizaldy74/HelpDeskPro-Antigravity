@@ -1,0 +1,136 @@
+namespace HelpDeskPro.Web.Components.Admin;
+
+@inject ISnackbar Snackbar
+@inject IApiClient ApiClient
+
+<MudDialog>
+    <DialogContent>
+        <div class="dialog-form-body">
+            <MudText Typo="Typo.h6" Class="dialog-title mb-2">
+                Ubah kebijakan SLA — Prioritas @Policy.PriorityName
+            </MudText>
+
+            <MudAlert Severity="Severity.Info" Dense="true" Class="mb-3">
+                Perubahan kebijakan SLA hanya berlaku untuk tiket baru yang dibuat setelah pembaruan disimpan (FR-34).
+            </MudAlert>
+
+            @if (!string.IsNullOrWhiteSpace(_errorMessage))
+            {
+                <MudAlert Severity="Severity.Error" Dense="true" Class="mb-3" ShowCloseIcon="true" CloseIconClicked="@(() => _errorMessage = null)">
+                    @_errorMessage
+                </MudAlert>
+            }
+
+            <MudNumericField T="int" 
+                             Label="Target respons pertama (menit)" 
+                             @bind-Value="_responseTimeMinutes" 
+                             Min="5" 
+                             Max="43200" 
+                             HelperText="@FormatMinutesHelper(_responseTimeMinutes)"
+                             Class="mb-3" 
+                             Disabled="@_isSaving" />
+
+            <MudNumericField T="int" 
+                             Label="Target resolusi (menit)" 
+                             @bind-Value="_resolutionTimeMinutes" 
+                             Min="15" 
+                             Max="43200" 
+                             HelperText="@FormatMinutesHelper(_resolutionTimeMinutes)"
+                             Class="mb-2" 
+                             Disabled="@_isSaving" />
+        </div>
+    </DialogContent>
+    <DialogActions>
+        <MudButton Variant="Variant.Outlined" Color="Color.Default" OnClick="Cancel" Disabled="@_isSaving" Size="Size.Small">
+            Batal
+        </MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Submit" Disabled="@_isSaving" Size="Size.Small">
+            @if (_isSaving)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                <span>Menyimpan...</span>
+            }
+            else
+            {
+                <span>Simpan kebijakan</span>
+            }
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private MudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter]
+    public SlaPolicyDto Policy { get; set; } = default!;
+
+    private int _responseTimeMinutes;
+    private int _resolutionTimeMinutes;
+    private bool _isSaving = false;
+    private string? _errorMessage;
+
+    protected override void OnInitialized()
+    {
+        _responseTimeMinutes = Policy.ResponseTimeMinutes;
+        _resolutionTimeMinutes = Policy.ResolutionTimeMinutes;
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private static string FormatMinutesHelper(int minutes)
+    {
+        if (minutes < 60) return $"{minutes} menit";
+        var hours = minutes / 60.0;
+        if (hours < 24) return $"Setara dengan {hours:0.#} jam";
+        var days = hours / 24.0;
+        return $"Setara dengan {days:0.#} hari ({hours:0} jam)";
+    }
+
+    private async Task Submit()
+    {
+        _errorMessage = null;
+
+        if (_responseTimeMinutes <= 0)
+        {
+            _errorMessage = "Target respons harus lebih dari 0 menit.";
+            return;
+        }
+
+        if (_resolutionTimeMinutes <= 0)
+        {
+            _errorMessage = "Target resolusi harus lebih dari 0 menit.";
+            return;
+        }
+
+        if (_resolutionTimeMinutes < _responseTimeMinutes)
+        {
+            _errorMessage = "Target resolusi tidak boleh lebih cepat dari target respons.";
+            return;
+        }
+
+        _isSaving = true;
+
+        try
+        {
+            var res = await ApiClient.UpdateSlaPolicyAsync(Policy.Priority, _responseTimeMinutes, _resolutionTimeMinutes);
+            if (res?.Success == true)
+            {
+                Snackbar.Add($"Kebijakan SLA {Policy.PriorityName} berhasil diperbarui.", Severity.Success);
+                MudDialog.Close(DialogResult.Ok(res.Data));
+            }
+            else
+            {
+                _errorMessage = res?.Errors is { Count: > 0 } ? string.Join("; ", res.Errors) : "Gagal memperbarui kebijakan SLA.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ex.Message;
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+}

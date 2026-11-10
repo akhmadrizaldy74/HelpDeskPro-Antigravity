@@ -1,0 +1,305 @@
+namespace HelpDeskPro.Web.Components.Admin;
+
+@inject ISnackbar Snackbar
+@inject IApiClient ApiClient
+
+<MudDialog>
+    <DialogContent>
+        <div class="dialog-form-body">
+            <MudText Typo="Typo.h6" Class="dialog-title mb-4">
+                @(User == null ? "Tambah pengguna baru" : "Ubah data pengguna")
+            </MudText>
+
+            @if (!string.IsNullOrWhiteSpace(_errorMessage))
+            {
+                <MudAlert Severity="Severity.Error" Dense="true" Class="mb-3" ShowCloseIcon="true" CloseIconClicked="@(() => _errorMessage = null)">
+                    @_errorMessage
+                </MudAlert>
+            }
+
+            <MudGrid Spacing="2">
+                <MudItem xs="12" sm="6">
+                    <MudTextField T="string" 
+                                  Label="NIK (Nomor Induk Karyawan)" 
+                                  @bind-Value="_employeeNo" 
+                                  Required="true" 
+                                  RequiredError="NIK wajib diisi."
+                                  MaxLength="20" 
+                                  Immediate="true"
+                                  HelperText="Contoh: EMP001, IT002"
+                                  Disabled="@(User != null || _isSaving)" />
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudTextField T="string" 
+                                  Label="Nama lengkap" 
+                                  @bind-Value="_fullName" 
+                                  Required="true" 
+                                  RequiredError="Nama lengkap wajib diisi."
+                                  MaxLength="100" 
+                                  Immediate="true"
+                                  HelperText="Contoh: Budi Santoso"
+                                  Disabled="@_isSaving" />
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudTextField T="string" 
+                                  Label="Alamat email" 
+                                  @bind-Value="_email" 
+                                  Required="true" 
+                                  RequiredError="Email wajib diisi."
+                                  MaxLength="100" 
+                                  Immediate="true"
+                                  HelperText="Contoh: budi@helpdeskpro.local"
+                                  Disabled="@(User != null || _isSaving)" />
+                </MudItem>
+
+                @if (User == null)
+                {
+                    <MudItem xs="12" sm="6">
+                        <MudTextField T="string" 
+                                      Label="Password awal" 
+                                      @bind-Value="_password" 
+                                      InputType="InputType.Password"
+                                      Required="true" 
+                                      RequiredError="Password awal wajib diisi."
+                                      MaxLength="100" 
+                                      Immediate="true"
+                                      HelperText="Minimal 8 karakter"
+                                      Disabled="@_isSaving" />
+                    </MudItem>
+                }
+
+                <MudItem xs="12" sm="6">
+                    <MudSelect T="int" 
+                               Label="Departemen" 
+                               @bind-Value="_departmentId" 
+                               Required="true"
+                               Dense="true"
+                               Margin="Margin.Dense"
+                               Disabled="@_isSaving">
+                        @foreach (var dept in _departments)
+                        {
+                            <MudSelectItem Value="@dept.Id">@dept.Name (@dept.Code)</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudSelect T="string" 
+                               Label="Peran (Role)" 
+                               @bind-Value="_role" 
+                               Required="true"
+                               Dense="true"
+                               Margin="Margin.Dense"
+                               Disabled="@_isSaving">
+                        <MudSelectItem Value="@("Requester")">Requester (Karyawan)</MudSelectItem>
+                        <MudSelectItem Value="@("Agent")">Agent (Teknisi IT)</MudSelectItem>
+                        <MudSelectItem Value="@("Supervisor")">Supervisor (Penyelia)</MudSelectItem>
+                        <MudSelectItem Value="@("Admin")">Admin (Administrator)</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+
+                <MudItem xs="12">
+                    <MudSelect T="Guid?" 
+                               Label="Supervisor penanggung jawab (Opsional)" 
+                               @bind-Value="_supervisorId" 
+                               Clearable="true"
+                               Dense="true"
+                               Margin="Margin.Dense"
+                               Disabled="@_isSaving">
+                        <MudSelectItem Value="@((Guid?)null)">Tidak ada supervisor</MudSelectItem>
+                        @foreach (var sup in _supervisors)
+                        {
+                            <MudSelectItem Value="@((Guid?)sup.Id)">@sup.FullName (@sup.Role - @sup.DepartmentName)</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+            </MudGrid>
+        </div>
+    </DialogContent>
+    <DialogActions>
+        <MudButton Variant="Variant.Outlined" Color="Color.Default" OnClick="Cancel" Disabled="@_isSaving" Size="Size.Small">
+            Batal
+        </MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Submit" Disabled="@_isSaving" Size="Size.Small">
+            @if (_isSaving)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                <span>Menyimpan...</span>
+            }
+            else
+            {
+                <span>Simpan</span>
+            }
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private MudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter]
+    public UserListItemDto? User { get; set; }
+
+    [Parameter]
+    public IReadOnlyList<DepartmentDto>? AvailableDepartments { get; set; }
+
+    [Parameter]
+    public IReadOnlyList<UserListItemDto>? AvailableSupervisors { get; set; }
+
+    private string _employeeNo = string.Empty;
+    private string _fullName = string.Empty;
+    private string _email = string.Empty;
+    private string _password = string.Empty;
+    private int _departmentId = 0;
+    private string _role = "Requester";
+    private Guid? _supervisorId;
+
+    private List<DepartmentDto> _departments = new();
+    private List<UserListItemDto> _supervisors = new();
+
+    private bool _isSaving = false;
+    private string? _errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AvailableDepartments != null)
+        {
+            _departments = AvailableDepartments.Where(d => d.IsActive).ToList();
+        }
+        else
+        {
+            try
+            {
+                var deptRes = await ApiClient.GetDepartmentsAsync(isActive: true);
+                if (deptRes?.Success == true && deptRes.Data != null)
+                {
+                    _departments = deptRes.Data.ToList();
+                }
+            }
+            catch
+            {
+                _departments = new List<DepartmentDto>();
+            }
+        }
+
+        if (AvailableSupervisors != null)
+        {
+            _supervisors = AvailableSupervisors
+                .Where(u => u.IsActive && (User == null || u.Id != User.Id))
+                .ToList();
+        }
+
+        if (User != null)
+        {
+            _employeeNo = User.EmployeeNo;
+            _fullName = User.FullName;
+            _email = User.Email;
+            _departmentId = User.DepartmentId;
+            _role = User.Role;
+            _supervisorId = User.SupervisorId;
+        }
+        else if (_departments.Count > 0)
+        {
+            _departmentId = _departments[0].Id;
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private async Task Submit()
+    {
+        _errorMessage = null;
+
+        if (User == null && string.IsNullOrWhiteSpace(_employeeNo))
+        {
+            _errorMessage = "NIK wajib diisi.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_fullName) || _fullName.Trim().Length < 2)
+        {
+            _errorMessage = "Nama lengkap minimal 2 karakter.";
+            return;
+        }
+
+        if (User == null && (string.IsNullOrWhiteSpace(_email) || !_email.Contains('@')))
+        {
+            _errorMessage = "Email tidak valid.";
+            return;
+        }
+
+        if (User == null && (string.IsNullOrWhiteSpace(_password) || _password.Length < 8))
+        {
+            _errorMessage = "Password awal minimal 8 karakter.";
+            return;
+        }
+
+        if (_departmentId <= 0)
+        {
+            _errorMessage = "Departemen wajib dipilih.";
+            return;
+        }
+
+        _isSaving = true;
+
+        try
+        {
+            if (User == null)
+            {
+                var command = new CreateUserCommand(
+                    _employeeNo.Trim().ToUpperInvariant(),
+                    _fullName.Trim(),
+                    _email.Trim().ToLowerInvariant(),
+                    _password,
+                    _departmentId,
+                    _role,
+                    _supervisorId
+                );
+
+                var res = await ApiClient.CreateUserAsync(command);
+                if (res?.Success == true)
+                {
+                    Snackbar.Add("Pengguna berhasil didaftarkan.", Severity.Success);
+                    MudDialog.Close(DialogResult.Ok(res.Data));
+                }
+                else
+                {
+                    _errorMessage = res?.Errors is { Count: > 0 } ? string.Join("; ", res.Errors) : "Gagal menambahkan pengguna.";
+                }
+            }
+            else
+            {
+                var command = new UpdateUserCommand(
+                    User.Id,
+                    _fullName.Trim(),
+                    _departmentId,
+                    _role,
+                    _supervisorId,
+                    User.IsActive
+                );
+
+                var res = await ApiClient.UpdateUserAsync(User.Id, command);
+                if (res?.Success == true)
+                {
+                    Snackbar.Add("Data pengguna berhasil diperbarui.", Severity.Success);
+                    MudDialog.Close(DialogResult.Ok(res.Data));
+                }
+                else
+                {
+                    _errorMessage = res?.Errors is { Count: > 0 } ? string.Join("; ", res.Errors) : "Gagal memperbarui pengguna.";
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ex.Message;
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+}

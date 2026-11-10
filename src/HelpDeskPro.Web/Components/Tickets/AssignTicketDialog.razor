@@ -1,0 +1,139 @@
+@namespace HelpDeskPro.Web.Components.Tickets
+@inject IApiClient ApiClient
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6" Style="font-size: 16px; font-weight: 600;">Tugaskan tiket</MudText>
+    </TitleContent>
+    <DialogContent>
+        <div class="assign-dialog-content">
+            @if (!string.IsNullOrWhiteSpace(_errorMessage))
+            {
+                <div class="dialog-error-alert">
+                    @_errorMessage
+                </div>
+            }
+
+            <MudText Typo="Typo.body2" Class="mb-3 text-secondary">
+                Pilih teknisi di departemen IT untuk menangani tiket ini.
+            </MudText>
+
+            <MudSelect T="Guid?" 
+                       Label="Teknisi IT" 
+                       @bind-Value="_selectedAssigneeId" 
+                       Dense="true" 
+                       Margin="Margin.Dense" 
+                       Variant="Variant.Outlined"
+                       AnchorOrigin="Origin.BottomLeft"
+                       TransformOrigin="Origin.TopLeft"
+                       Required="true">
+                @foreach (var user in Assignees)
+                {
+                    <MudSelectItem T="Guid?" Value="@((Guid?)user.Id)">@user.FullName</MudSelectItem>
+                }
+            </MudSelect>
+        </div>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Variant="Variant.Text" Disabled="@_isSubmitting" Style="text-transform: none; border-radius: 4px;">
+            Batal
+        </MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SubmitAsync" Disabled="@(_isSubmitting || !_selectedAssigneeId.HasValue)" Style="text-transform: none; border-radius: 4px;">
+            @if (_isSubmitting)
+            {
+                <span class="loading-spinner-sm"></span>
+                <span>Menugaskan...</span>
+            }
+            else
+            {
+                <span>Tugaskan</span>
+            }
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+<style>
+    .assign-dialog-content {
+        min-width: 360px;
+        max-width: 420px;
+    }
+
+    .dialog-error-alert {
+        background-color: #FEEDE6;
+        color: #B42318;
+        border: 1px solid #C4320A;
+        border-radius: 4px;
+        padding: 8px 12px;
+        font-size: 13px;
+        margin-bottom: 12px;
+    }
+
+    .loading-spinner-sm {
+        width: 12px;
+        height: 12px;
+        border: 2px solid rgba(255, 255, 255, 0.4);
+        border-top-color: #FFFFFF;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+        margin-right: 6px;
+        display: inline-block;
+    }
+
+    @@keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+</style>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter] public long TicketId { get; set; }
+    [Parameter] public Guid? CurrentAssigneeId { get; set; }
+    [Parameter] public byte[]? RowVersion { get; set; }
+    [Parameter] public IReadOnlyList<AssigneeLookupDto> Assignees { get; set; } = [];
+
+    private Guid? _selectedAssigneeId;
+    private string? _errorMessage;
+    private bool _isSubmitting;
+
+    protected override void OnInitialized()
+    {
+        _selectedAssigneeId = CurrentAssigneeId;
+    }
+
+    private async Task SubmitAsync()
+    {
+        if (!_selectedAssigneeId.HasValue)
+        {
+            _errorMessage = "Silakan pilih teknisi IT.";
+            return;
+        }
+
+        _isSubmitting = true;
+        _errorMessage = null;
+
+        try
+        {
+            var result = await ApiClient.AssignTicketAsync(TicketId, _selectedAssigneeId.Value, RowVersion);
+            if (result?.Success == true && result.Data != null)
+            {
+                MudDialog.Close(DialogResult.Ok(result.Data));
+            }
+            else
+            {
+                _errorMessage = result?.Errors.FirstOrDefault() ?? "Gagal menugaskan tiket.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ex.Message;
+        }
+        finally
+        {
+            _isSubmitting = false;
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}
+

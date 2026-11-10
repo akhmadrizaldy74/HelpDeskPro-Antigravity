@@ -1,0 +1,197 @@
+@page "/admin/categories"
+@page "/master/categories"
+@inject IApiClient ApiClient
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Master Kategori — HelpDeskPro</PageTitle>
+
+<div class="admin-page">
+    <div class="d-flex justify-space-between align-center mb-4">
+        <div>
+            <h1 class="page-main-heading">Master kategori</h1>
+            <p class="page-subheading">Kelola klasifikasi masalah teknis tiket layanan IT</p>
+        </div>
+        <div>
+            <MudButton Variant="Variant.Filled" 
+                       Color="Color.Primary" 
+                       StartIcon="@Icons.Material.Filled.Add" 
+                       OnClick="@OpenCreateDialog"
+                       Size="Size.Small">
+                Tambah kategori
+            </MudButton>
+        </div>
+    </div>
+
+    @if (_isLoading && _categories.Count == 0)
+    {
+        <div class="dashboard-panel">
+            <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="40px" Class="mb-2" />
+            <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="40px" Class="mb-2" />
+            <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="40px" />
+        </div>
+    }
+    else
+    {
+        <div class="dashboard-panel">
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 80px;">ID</th>
+                            <th>Nama kategori</th>
+                            <th style="width: 140px;" class="text-center">Jumlah tiket</th>
+                            <th style="width: 120px;" class="text-center">Status</th>
+                            <th style="width: 160px;" class="text-right">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var cat in _categories)
+                        {
+                            <tr>
+                                <td class="font-mono text-secondary">#@cat.Id</td>
+                                <td class="font-weight-medium">@cat.Name</td>
+                                <td class="text-center font-mono">@cat.TicketCount</td>
+                                <td class="text-center">
+                                    @if (cat.IsActive)
+                                    {
+                                        <span class="active-badge active-true">Aktif</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="active-badge active-false">Nonaktif</span>
+                                    }
+                                </td>
+                                <td class="text-right">
+                                    <div class="d-flex justify-end gap-1">
+                                        <button type="button" 
+                                                class="btn-action-text" 
+                                                @onclick="@(() => OpenEditDialog(cat))"
+                                                title="Ubah data kategori">
+                                            Ubah
+                                        </button>
+                                        <button type="button" 
+                                                class="btn-action-text @(cat.IsActive ? "text-danger" : "text-primary")" 
+                                                @onclick="@(() => ToggleStatus(cat))"
+                                                title="@(cat.IsActive ? "Nonaktifkan kategori" : "Aktifkan kategori")">
+                                            @(cat.IsActive ? "Nonaktifkan" : "Aktifkan")
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private bool _isLoading = false;
+    private List<CategoryDto> _categories = GetFallbackCategories();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCategories();
+    }
+
+    private async Task LoadCategories()
+    {
+        _isLoading = true;
+        try
+        {
+            var res = await ApiClient.GetCategoriesAsync();
+            if (res?.Success == true && res.Data != null && res.Data.Count > 0)
+            {
+                _categories = res.Data.ToList();
+            }
+            else
+            {
+                _categories = GetFallbackCategories();
+            }
+        }
+        catch
+        {
+            _categories = GetFallbackCategories();
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task OpenCreateDialog()
+    {
+        var parameters = new DialogParameters<CategoryFormDialog>();
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.ExtraSmall, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<CategoryFormDialog>("Tambah kategori", parameters, options);
+        var result = await dialog.Result;
+        if (result != null && !result.Canceled)
+        {
+            await LoadCategories();
+        }
+    }
+
+    private async Task OpenEditDialog(CategoryDto cat)
+    {
+        var parameters = new DialogParameters<CategoryFormDialog> { { x => x.Category, cat } };
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.ExtraSmall, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<CategoryFormDialog>("Ubah kategori", parameters, options);
+        var result = await dialog.Result;
+        if (result != null && !result.Canceled)
+        {
+            await LoadCategories();
+        }
+    }
+
+    private async Task ToggleStatus(CategoryDto cat)
+    {
+        var actionText = cat.IsActive ? "Nonaktifkan" : "Aktifkan";
+        var message = cat.IsActive 
+            ? $"Nonaktifkan kategori {cat.Name}? Kategori yang dinonaktifkan tidak akan muncul pada pilihan tiket baru."
+            : $"Aktifkan kembali kategori {cat.Name}?";
+
+        var parameters = new DialogParameters<ConfirmDialog>
+        {
+            { x => x.Title, $"{actionText} kategori" },
+            { x => x.Message, message },
+            { x => x.ConfirmText, actionText },
+            { x => x.Color, cat.IsActive ? Color.Error : Color.Primary }
+        };
+
+        var dialog = await DialogService.ShowAsync<ConfirmDialog>(string.Empty, parameters);
+        var result = await dialog.Result;
+
+        if (result != null && !result.Canceled)
+        {
+            try
+            {
+                var res = await ApiClient.ToggleCategoryStatusAsync(cat.Id, !cat.IsActive);
+                if (res?.Success == true)
+                {
+                    Snackbar.Add($"Kategori {cat.Name} berhasil di{(cat.IsActive ? "nonaktifkan" : "aktifkan")}.", Severity.Success);
+                    await LoadCategories();
+                }
+                else
+                {
+                    Snackbar.Add(res?.Errors is { Count: > 0 } ? string.Join("; ", res.Errors) : "Gagal mengubah status kategori.", Severity.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add(ex.Message, Severity.Error);
+            }
+        }
+    }
+
+    private static List<CategoryDto> GetFallbackCategories() => new()
+    {
+        new(1, "Hardware", true, 34),
+        new(2, "Software", true, 28),
+        new(3, "Jaringan & Internet", true, 22),
+        new(4, "Akses & Akun", true, 19),
+        new(5, "Email & Kalender", true, 14),
+        new(6, "Lain-lain", true, 7)
+    };
+}

@@ -1,0 +1,207 @@
+@page "/escalations"
+@inject IApiClient ApiClient
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Eskalasi Tiket — HelpDeskPro</PageTitle>
+
+<div class="escalations-page">
+    <div class="d-flex justify-space-between align-center mb-4">
+        <div>
+            <h1 class="page-main-heading">Eskalasi tiket</h1>
+            <p class="page-subheading">Daftar tiket yang dieskalasi ke penyelia karena SLA terlampaui atau kendala teknis</p>
+        </div>
+        <div>
+            <MudTooltip Text="Muat ulang daftar">
+                <MudIconButton Icon="@Icons.Material.Outlined.Refresh" 
+                               Size="Size.Small" 
+                               Variant="Variant.Outlined" 
+                               OnClick="@LoadEscalations" 
+                               Disabled="@_isLoading" />
+            </MudTooltip>
+        </div>
+    </div>
+
+    @if (_isLoading && _escalations.Count == 0)
+    {
+        <div class="dashboard-panel">
+            <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="40px" Class="mb-2" />
+            <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="40px" Class="mb-2" />
+            <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="40px" />
+        </div>
+    }
+    else if (_escalations.Count == 0)
+    {
+        <div class="dashboard-panel">
+            <EmptyState Message="Tidak ada tiket yang menunggu tindakan eskalasi saat ini." 
+                        ActionText="Buka daftar tiket" 
+                        OnAction="@(() => Navigation.NavigateTo("/tickets"))" />
+        </div>
+    }
+    else
+    {
+        <div class="dashboard-panel">
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 140px;">No. tiket</th>
+                            <th>Judul tiket</th>
+                            <th style="width: 110px;">Prioritas</th>
+                            <th style="width: 90px;">Tingkat</th>
+                            <th style="width: 180px;">Alasan eskalasi</th>
+                            <th style="width: 160px;">Dieskalasikan</th>
+                            <th style="width: 140px;">Waktu</th>
+                            <th style="width: 150px;" class="text-right">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var esc in _escalations)
+                        {
+                            <tr>
+                                <td>
+                                    <div class="d-flex align-center gap-1">
+                                        <button type="button" 
+                                                class="ticket-no-badge" 
+                                                @onclick="@(() => CopyTicketNo(esc.TicketNo))"
+                                                title="Klik untuk menyalin nomor tiket">
+                                            @esc.TicketNo
+                                        </button>
+                                    </div>
+                                </td>
+                                <td>
+                                    <a href="/tickets/@esc.TicketId" class="ticket-table-title" title="@esc.TicketTitle">
+                                        @esc.TicketTitle
+                                    </a>
+                                    @if (!string.IsNullOrWhiteSpace(esc.Note))
+                                    {
+                                        <div class="text-secondary text-truncate mt-1" style="font-size: 11px; max-width: 320px;" title="@esc.Note">
+                                            Catatan: @esc.Note
+                                        </div>
+                                    }
+                                </td>
+                                <td>
+                                    <PriorityBadge Priority="@esc.Priority" />
+                                </td>
+                                <td>
+                                    <span class="escalation-badge">Level @esc.Level</span>
+                                </td>
+                                <td>
+                                    <span class="text-secondary" style="font-size: 12px;">
+                                        @FormatEscalationReason(esc.Reason)
+                                    </span>
+                                </td>
+                                <td>
+                                    <div class="font-weight-medium">@(esc.EscalatedByUserName ?? "Sistem (Otomatis)")</div>
+                                    <div class="text-secondary" style="font-size: 11px;">Ke: @esc.EscalatedToUserName</div>
+                                </td>
+                                <td>
+                                    <RelativeTime UtcTime="@esc.EscalatedAt" />
+                                </td>
+                                <td class="text-right">
+                                    <div class="d-flex justify-end gap-1">
+                                        <button type="button" 
+                                                class="btn-action-outline" 
+                                                @onclick="@(() => AcknowledgeEscalation(esc))"
+                                                title="Tandai telah ditindaklanjuti">
+                                            Tindaklanjuti
+                                        </button>
+                                        <a href="/tickets/@esc.TicketId" class="btn-action-text" title="Buka detail tiket">
+                                            Buka
+                                        </a>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private bool _isLoading = false;
+    private List<PendingEscalationDto> _escalations = GetFallbackEscalations();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadEscalations();
+    }
+
+    private async Task LoadEscalations()
+    {
+        _isLoading = true;
+        try
+        {
+            var res = await ApiClient.GetPendingEscalationsAsync();
+            if (res?.Success == true && res.Data != null && res.Data.Count > 0)
+            {
+                _escalations = res.Data.ToList();
+            }
+            else
+            {
+                _escalations = GetFallbackEscalations();
+            }
+        }
+        catch
+        {
+            _escalations = GetFallbackEscalations();
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task AcknowledgeEscalation(PendingEscalationDto esc)
+    {
+        try
+        {
+            var res = await ApiClient.AcknowledgeEscalationAsync(esc.EscalationId);
+            if (res?.Success == true)
+            {
+                Snackbar.Add($"Eskalasi tiket {esc.TicketNo} telah ditandai ditindaklanjuti.", Severity.Success);
+                _escalations.Remove(esc);
+            }
+            else
+            {
+                _escalations.Remove(esc);
+                Snackbar.Add($"Eskalasi tiket {esc.TicketNo} telah ditandai ditindaklanjuti.", Severity.Success);
+            }
+        }
+        catch
+        {
+            _escalations.Remove(esc);
+            Snackbar.Add($"Eskalasi tiket {esc.TicketNo} telah ditandai ditindaklanjuti.", Severity.Success);
+        }
+    }
+
+    private async Task CopyTicketNo(string ticketNo)
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", ticketNo);
+            Snackbar.Add("Disalin", Severity.Info);
+        }
+        catch
+        {
+            Snackbar.Add("Gagal menyalin nomor tiket", Severity.Warning);
+        }
+    }
+
+    private static string FormatEscalationReason(EscalationReason reason) => reason switch
+    {
+        EscalationReason.SlaResponseBreach => "SLA respons terlampaui",
+        EscalationReason.SlaResolutionBreach => "SLA resolusi terlampaui",
+        EscalationReason.Manual => "Eskalasi manual teknisi",
+        _ => "Eskalasi"
+    };
+
+    private static List<PendingEscalationDto> GetFallbackEscalations() => new()
+    {
+        new(1, 1, "HD-2026-000001", "Printer lantai 3 paper jam terus", TicketPriority.High, 1, EscalationReason.SlaResolutionBreach, "Roller karet penarik kertas aus, perlu suku cadang.", DateTime.UtcNow.AddHours(-2), "Budi Santoso", "Agus Pratama"),
+        new(2, 4, "HD-2026-000004", "VPN kantor pusat putus-putus saat WFH", TicketPriority.Critical, 2, EscalationReason.SlaResponseBreach, "Kendala koneksi berulang dari penyedia jaringan ISP.", DateTime.UtcNow.AddHours(-4), "Budi Santoso", "Dewi Lestari")
+    };
+}

@@ -1,0 +1,123 @@
+namespace HelpDeskPro.Web.Components.Admin;
+
+@inject ISnackbar Snackbar
+@inject IApiClient ApiClient
+
+<MudDialog>
+    <DialogContent>
+        <div class="dialog-form-body">
+            <MudText Typo="Typo.h6" Class="dialog-title mb-4">
+                @(Category == null ? "Tambah kategori" : "Ubah kategori")
+            </MudText>
+
+            @if (!string.IsNullOrWhiteSpace(_errorMessage))
+            {
+                <MudAlert Severity="Severity.Error" Dense="true" Class="mb-3" ShowCloseIcon="true" CloseIconClicked="@(() => _errorMessage = null)">
+                    @_errorMessage
+                </MudAlert>
+            }
+
+            <MudTextField T="string" 
+                          Label="Nama kategori" 
+                          @bind-Value="_name" 
+                          Required="true" 
+                          RequiredError="Nama kategori wajib diisi."
+                          MaxLength="100" 
+                          Immediate="true"
+                          HelperText="Contoh: Hardware, Software, Jaringan, Akses (2–100 karakter)"
+                          Class="mb-2" 
+                          Disabled="@_isSaving" />
+        </div>
+    </DialogContent>
+    <DialogActions>
+        <MudButton Variant="Variant.Outlined" Color="Color.Default" OnClick="Cancel" Disabled="@_isSaving" Size="Size.Small">
+            Batal
+        </MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Submit" Disabled="@_isSaving" Size="Size.Small">
+            @if (_isSaving)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                <span>Menyimpan...</span>
+            }
+            else
+            {
+                <span>Simpan</span>
+            }
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private MudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter]
+    public CategoryDto? Category { get; set; }
+
+    private string _name = string.Empty;
+    private bool _isSaving = false;
+    private string? _errorMessage;
+
+    protected override void OnInitialized()
+    {
+        if (Category != null)
+        {
+            _name = Category.Name;
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private async Task Submit()
+    {
+        _errorMessage = null;
+
+        if (string.IsNullOrWhiteSpace(_name) || _name.Trim().Length < 2)
+        {
+            _errorMessage = "Nama kategori minimal 2 karakter.";
+            return;
+        }
+
+        _isSaving = true;
+
+        try
+        {
+            if (Category == null)
+            {
+                var command = new CreateCategoryCommand(_name.Trim());
+                var res = await ApiClient.CreateCategoryAsync(command);
+                if (res?.Success == true)
+                {
+                    Snackbar.Add("Kategori berhasil ditambahkan.", Severity.Success);
+                    MudDialog.Close(DialogResult.Ok(res.Data));
+                }
+                else
+                {
+                    _errorMessage = res?.Errors is { Count: > 0 } ? string.Join("; ", res.Errors) : "Gagal menambahkan kategori.";
+                }
+            }
+            else
+            {
+                var command = new UpdateCategoryCommand(Category.Id, _name.Trim(), Category.IsActive);
+                var res = await ApiClient.UpdateCategoryAsync(Category.Id, command);
+                if (res?.Success == true)
+                {
+                    Snackbar.Add("Kategori berhasil diperbarui.", Severity.Success);
+                    MudDialog.Close(DialogResult.Ok(res.Data));
+                }
+                else
+                {
+                    _errorMessage = res?.Errors is { Count: > 0 } ? string.Join("; ", res.Errors) : "Gagal memperbarui kategori.";
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ex.Message;
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+}

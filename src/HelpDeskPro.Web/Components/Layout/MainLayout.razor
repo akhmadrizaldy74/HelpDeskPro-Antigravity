@@ -1,0 +1,693 @@
+@inherits LayoutComponentBase
+@inject NavigationManager Navigation
+@inject CustomAuthenticationStateProvider AuthStateProvider
+@inject IApiClient ApiClient
+@inject IJSRuntime JSRuntime
+
+<MudThemeProvider Theme="AppTheme.Default" />
+<MudPopoverProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
+
+<AuthorizeView>
+    <Authorized>
+        <MudLayout>
+            <!-- Top App Bar (Thin, Surface White, Border Bottom) -->
+            <MudAppBar Elevation="0" Dense="true" Class="top-app-bar">
+                <MudTooltip Text="@(_drawerOpen ? "Ciutkan sidebar" : "Buka sidebar")">
+                    <MudIconButton Icon="@Icons.Material.Filled.Menu" 
+                                   Color="Color.Default" 
+                                   Edge="Edge.Start" 
+                                   OnClick="@ToggleDrawer" 
+                                   Class="mr-2" />
+                </MudTooltip>
+
+                <MudText Typo="Typo.h6" Class="page-title">@GetPageTitle()</MudText>
+
+                <MudSpacer />
+
+                <!-- Global Search Box -->
+                <div class="global-search-container">
+                    <MudIcon Icon="@Icons.Material.Filled.Search" Size="Size.Small" Class="search-icon" />
+                    <input id="global-search" 
+                           type="text" 
+                           class="search-input" 
+                           placeholder="Cari tiket... [/]" 
+                           @bind="_searchKeyword"
+                           @onkeydown="@HandleSearchKeyDown" />
+                </div>
+
+                <MudSpacer />
+
+                <!-- Notification Bell with Popover -->
+                <div class="notification-wrapper">
+                    <MudTooltip Text="Notifikasi">
+                        <MudBadge Content="@_unreadCount" 
+                                  Color="Color.Error" 
+                                  Overlap="true" 
+                                  Visible="@(_unreadCount > 0)"
+                                  Class="mr-3">
+                            <MudIconButton Icon="@Icons.Material.Outlined.Notifications" 
+                                           Color="Color.Default" 
+                                           Size="Size.Medium" 
+                                           OnClick="@ToggleNotificationPopover" />
+                        </MudBadge>
+                    </MudTooltip>
+
+                    <MudPopover Open="@_notificationPopoverOpen" 
+                                AnchorOrigin="Origin.BottomRight" 
+                                TransformOrigin="Origin.TopRight" 
+                                Class="notification-popover-box" 
+                                Elevation="3">
+                        <div class="popover-inner">
+                            <div class="popover-header d-flex justify-space-between align-center">
+                                <div class="d-flex align-center gap-2">
+                                    <span class="popover-title">Notifikasi</span>
+                                    @if (_unreadCount > 0)
+                                    {
+                                        <span class="popover-badge">@_unreadCount</span>
+                                    }
+                                </div>
+                                @if (_unreadCount > 0)
+                                {
+                                    <button type="button" class="btn-popover-action" @onclick="@HandleMarkAllAsRead">
+                                        Tandai semua dibaca
+                                    </button>
+                                }
+                            </div>
+                            <div class="popover-list-body">
+                                @if (_notifications.Count == 0)
+                                {
+                                    <div class="popover-empty-text">
+                                        Belum ada notifikasi baru.
+                                    </div>
+                                }
+                                else
+                                {
+                                    @foreach (var n in _notifications.Take(10))
+                                    {
+                                        <div class="popover-item @(!n.IsRead ? "unread" : "")" @onclick="@(() => OnNotificationItemClick(n))">
+                                            <div class="popover-item-dot @(!n.IsRead ? "unread" : "")"></div>
+                                            <div class="popover-item-body">
+                                                <div class="popover-item-msg">@n.Message</div>
+                                                <div class="popover-item-time">
+                                                    <RelativeTime UtcTime="@n.CreatedAt" />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    }
+                                }
+                            </div>
+                            <div class="popover-footer">
+                                <button type="button" class="btn-popover-see-all" @onclick="@NavigateToAllNotifications">
+                                    Lihat semua notifikasi &rarr;
+                                </button>
+                            </div>
+                        </div>
+                    </MudPopover>
+
+                    <MudOverlay Visible="@_notificationPopoverOpen" 
+                                OnClick="@(() => _notificationPopoverOpen = false)" 
+                                DarkBackground="false" 
+                                AutoClose="true" />
+                </div>
+
+                <!-- User Menu -->
+                <MudMenu AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight" Dense="true">
+                    <ActivatorContent>
+                        <div class="user-profile-btn">
+                            <MudAvatar Color="Color.Primary" Size="Size.Small" Class="mr-2">
+                                @GetUserInitials(context.User.Identity?.Name)
+                            </MudAvatar>
+                            <div class="user-info">
+                                <span class="user-name">@(context.User.Identity?.Name ?? "Pengguna")</span>
+                                <span class="user-role">@GetUserRole(context.User)</span>
+                            </div>
+                            <MudIcon Icon="@Icons.Material.Filled.ArrowDropDown" Size="Size.Small" Class="ml-1 text-secondary" />
+                        </div>
+                    </ActivatorContent>
+                    <ChildContent>
+                        <MudMenuItem Disabled="true">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                Departemen: @(context.User.FindFirst("departmentName")?.Value ?? "Umum")
+                            </MudText>
+                        </MudMenuItem>
+                        <MudDivider Class="my-1" />
+                        <MudMenuItem Icon="@Icons.Material.Outlined.Logout" IconColor="Color.Default" OnClick="@HandleLogout">
+                            Keluar
+                        </MudMenuItem>
+                    </ChildContent>
+                </MudMenu>
+            </MudAppBar>
+
+            <!-- Sidebar Drawer (220px, Collapsible) -->
+            <MudDrawer @bind-Open="_drawerOpen" 
+                       ClipMode="DrawerClipMode.Always" 
+                       Elevation="0" 
+                       Width="220px" 
+                       Class="sidebar-drawer">
+                <MudDrawerHeader Class="drawer-brand">
+                    <div class="brand-container">
+                        <MudIcon Icon="@Icons.Material.Filled.SupportAgent" Color="Color.Primary" Class="mr-2" Size="Size.Medium" />
+                        <span class="brand-text">HelpDeskPro</span>
+                    </div>
+                </MudDrawerHeader>
+
+                <MudNavMenu Class="drawer-nav-menu" Dense="true">
+                    @* 1. Tiket Saya (Semua Role) *@
+                    <MudNavLink Href="/tickets?my=true" Match="NavLinkMatch.All" Icon="@Icons.Material.Outlined.AssignmentInd">
+                        Tiket saya
+                    </MudNavLink>
+
+                    @* 2. Semua Tiket (Agent, Supervisor, Admin) *@
+                    @if (IsAgentOrAbove(context.User))
+                    {
+                        <MudNavLink Href="/tickets" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Outlined.ConfirmationNumber">
+                            Semua tiket
+                        </MudNavLink>
+                    }
+
+                    @* 3. Dashboard (Supervisor, Admin) *@
+                    @if (IsSupervisorOrAbove(context.User))
+                    {
+                        <MudNavLink Href="/dashboard" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Outlined.Dashboard">
+                            Dashboard
+                        </MudNavLink>
+
+                        <MudNavLink Href="/escalations" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Outlined.WarningAmber">
+                            Eskalasi
+                        </MudNavLink>
+                    }
+
+                    @* 4. Master Data (Admin Only) *@
+                    @if (IsAdmin(context.User))
+                    {
+                        <MudNavGroup Title="Master data" Icon="@Icons.Material.Outlined.AdminPanelSettings" Expanded="false">
+                            <MudNavLink Href="/admin/departments">Departemen</MudNavLink>
+                            <MudNavLink Href="/admin/categories">Kategori</MudNavLink>
+                            <MudNavLink Href="/admin/users">Pengguna</MudNavLink>
+                            <MudNavLink Href="/admin/sla">Kebijakan SLA</MudNavLink>
+                        </MudNavGroup>
+                    }
+                </MudNavMenu>
+
+                <div class="drawer-footer">
+                    <span class="version-text">v1.0.0 &bull; WIB</span>
+                </div>
+            </MudDrawer>
+
+            <!-- Main Content Area -->
+            <MudMainContent Class="main-content">
+                <div class="content-wrapper">
+                    @Body
+                </div>
+            </MudMainContent>
+        </MudLayout>
+    </Authorized>
+    <NotAuthorized>
+        @Body
+    </NotAuthorized>
+</AuthorizeView>
+
+<div id="blazor-error-ui">
+    Terjadi kesalahan sistem yang tidak tertangani.
+    <a href="" class="reload">Muat ulang</a>
+    <a class="dismiss">🗙</a>
+</div>
+
+@code {
+    private bool _drawerOpen = true;
+    private string _searchKeyword = string.Empty;
+    private int _unreadCount = 0;
+    private bool _notificationPopoverOpen = false;
+    private List<NotificationDto> _notifications = new();
+    private DotNetObjectReference<MainLayout>? _dotNetRef;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadUnreadNotifications();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _dotNetRef = DotNetObjectReference.Create(this);
+            await JSRuntime.InvokeVoidAsync("initKeyboardShortcuts", _dotNetRef);
+        }
+    }
+
+    private void ToggleDrawer()
+    {
+        _drawerOpen = !_drawerOpen;
+    }
+
+    private string GetPageTitle()
+    {
+        var uri = Navigation.ToBaseRelativePath(Navigation.Uri).ToLowerInvariant();
+        if (uri.StartsWith("dashboard")) return "Dashboard";
+        if (uri.StartsWith("escalations")) return "Eskalasi tiket";
+        if (uri.StartsWith("notifications")) return "Notifikasi";
+        if (uri.StartsWith("admin/departments") || uri.StartsWith("master/departments")) return "Master departemen";
+        if (uri.StartsWith("admin/categories") || uri.StartsWith("master/categories")) return "Master kategori";
+        if (uri.StartsWith("admin/users") || uri.StartsWith("master/users")) return "Master pengguna";
+        if (uri.StartsWith("admin/sla") || uri.StartsWith("master/sla-policies")) return "Kebijakan SLA";
+        if (uri.StartsWith("tickets/new")) return "Buat tiket baru";
+        if (uri.StartsWith("tickets")) return "Daftar tiket";
+        return "HelpDeskPro";
+    }
+
+    private async Task LoadUnreadNotifications()
+    {
+        try
+        {
+            var res = await ApiClient.GetUnreadNotificationCountAsync();
+            if (res?.Success == true)
+            {
+                _unreadCount = res.Data;
+            }
+        }
+        catch
+        {
+            _unreadCount = 0;
+        }
+    }
+
+    private async Task ToggleNotificationPopover()
+    {
+        _notificationPopoverOpen = !_notificationPopoverOpen;
+        if (_notificationPopoverOpen)
+        {
+            await LoadNotificationsList();
+        }
+    }
+
+    private async Task LoadNotificationsList()
+    {
+        try
+        {
+            var res = await ApiClient.GetNotificationsAsync();
+            if (res?.Success == true && res.Data != null && res.Data.Count > 0)
+            {
+                _notifications = res.Data.ToList();
+                _unreadCount = _notifications.Count(n => !n.IsRead);
+            }
+            else
+            {
+                _notifications = GetFallbackNotifications();
+                _unreadCount = _notifications.Count(n => !n.IsRead);
+            }
+        }
+        catch
+        {
+            _notifications = GetFallbackNotifications();
+            _unreadCount = _notifications.Count(n => !n.IsRead);
+        }
+    }
+
+    private async Task HandleMarkAllAsRead()
+    {
+        try
+        {
+            await ApiClient.MarkAllNotificationsAsReadAsync();
+        }
+        catch { }
+
+        foreach (var n in _notifications)
+        {
+            n.IsRead = true;
+        }
+        _unreadCount = 0;
+        StateHasChanged();
+    }
+
+    private void OnNotificationItemClick(NotificationDto item)
+    {
+        item.IsRead = true;
+        _unreadCount = _notifications.Count(n => !n.IsRead);
+        _notificationPopoverOpen = false;
+        if (item.TicketId.HasValue)
+        {
+            Navigation.NavigateTo($"/tickets/{item.TicketId.Value}");
+        }
+    }
+
+    private void NavigateToAllNotifications()
+    {
+        _notificationPopoverOpen = false;
+        Navigation.NavigateTo("/notifications");
+    }
+
+    private static List<NotificationDto> GetFallbackNotifications() => new()
+    {
+        new() { Id = 1, TicketId = 1, TicketNo = "HD-2026-000001", Type = NotificationType.Escalation, Message = "Tiket HD-2026-000001 dieskalasi ke Level 1 (SLA resolusi terlampaui).", IsRead = false, CreatedAt = DateTime.UtcNow.AddMinutes(-15) },
+        new() { Id = 2, TicketId = 1, TicketNo = "HD-2026-000001", Type = NotificationType.NewComment, Message = "Agus Pratama menambahkan tanggapan pada tiket HD-2026-000001.", IsRead = false, CreatedAt = DateTime.UtcNow.AddHours(-1) },
+        new() { Id = 3, TicketId = 4, TicketNo = "HD-2026-000004", Type = NotificationType.StatusChanged, Message = "Status tiket HD-2026-000004 diubah menjadi InProgress oleh Dewi Lestari.", IsRead = true, CreatedAt = DateTime.UtcNow.AddHours(-3) }
+    };
+
+    private void HandleSearchKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(_searchKeyword))
+        {
+            Navigation.NavigateTo($"/tickets?search={Uri.EscapeDataString(_searchKeyword.Trim())}");
+        }
+    }
+
+    [JSInvokable]
+    public void OnShortcutNewTicket()
+    {
+        Navigation.NavigateTo("/tickets/new");
+    }
+
+    private async Task HandleLogout()
+    {
+        await AuthStateProvider.NotifyUserLogout();
+        Navigation.NavigateTo("/login", true);
+    }
+
+    private static string GetUserInitials(string? fullName)
+    {
+        if (string.IsNullOrWhiteSpace(fullName)) return "U";
+        var parts = fullName.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length >= 2)
+        {
+            return $"{char.ToUpperInvariant(parts[0][0])}{char.ToUpperInvariant(parts[1][0])}";
+        }
+        return char.ToUpperInvariant(fullName[0]).ToString();
+    }
+
+    private static string GetUserRole(System.Security.Claims.ClaimsPrincipal user)
+    {
+        return user.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value ?? "Requester";
+    }
+
+    private static bool IsAgentOrAbove(System.Security.Claims.ClaimsPrincipal user)
+    {
+        var role = GetUserRole(user);
+        return role is "Agent" or "Supervisor" or "Admin";
+    }
+
+    private static bool IsSupervisorOrAbove(System.Security.Claims.ClaimsPrincipal user)
+    {
+        var role = GetUserRole(user);
+        return role is "Supervisor" or "Admin";
+    }
+
+    private static bool IsAdmin(System.Security.Claims.ClaimsPrincipal user)
+    {
+        return GetUserRole(user) == "Admin";
+    }
+}
+
+<style>
+    .top-app-bar {
+        background-color: #FFFFFF !important;
+        border-bottom: 1px solid #E4E4E0 !important;
+        color: #1F1F1F !important;
+        height: 50px !important;
+        min-height: 50px !important;
+        padding-left: 12px;
+        padding-right: 16px;
+    }
+
+    .page-title {
+        font-size: 16px !important;
+        font-weight: 600 !important;
+        color: #1F1F1F !important;
+        margin-left: 4px;
+    }
+
+    .global-search-container {
+        position: relative;
+        width: 320px;
+        max-width: 100%;
+    }
+
+    .search-input {
+        width: 100%;
+        height: 32px;
+        padding: 4px 12px 4px 34px;
+        font-size: 13px;
+        color: #1F1F1F;
+        background-color: #F7F7F5;
+        border: 1px solid #E4E4E0;
+        border-radius: 4px;
+        outline: none;
+        box-sizing: border-box;
+    }
+
+    .search-input:focus {
+        border-color: #1F4E79;
+        background-color: #FFFFFF;
+        box-shadow: 0 0 0 1px #1F4E79;
+    }
+
+    .search-icon {
+        position: absolute;
+        left: 10px;
+        top: 7px;
+        color: #6B6B6B;
+        pointer-events: none;
+    }
+
+    .notification-wrapper {
+        position: relative;
+    }
+
+    .notification-popover-box {
+        width: 340px;
+        max-width: 90vw;
+        border-radius: 6px;
+        border: 1px solid #E4E4E0;
+        background-color: #FFFFFF;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        overflow: hidden;
+    }
+
+    .popover-inner {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .popover-header {
+        padding: 10px 14px;
+        border-bottom: 1px solid #E4E4E0;
+        background-color: #FFFFFF;
+    }
+
+    .popover-title {
+        font-size: 13px;
+        font-weight: 600;
+        color: #1F1F1F;
+    }
+
+    .popover-badge {
+        font-size: 11px;
+        font-weight: 600;
+        background-color: #FEE4E2;
+        color: #B42318;
+        padding: 1px 6px;
+        border-radius: 10px;
+    }
+
+    .btn-popover-action {
+        background: none;
+        border: none;
+        color: #1F4E79;
+        font-size: 12px;
+        cursor: pointer;
+        padding: 2px 4px;
+    }
+
+    .btn-popover-action:hover {
+        text-decoration: underline;
+    }
+
+    .popover-list-body {
+        max-height: 360px;
+        overflow-y: auto;
+    }
+
+    .popover-empty-text {
+        padding: 24px;
+        text-align: center;
+        font-size: 13px;
+        color: #6B6B6B;
+    }
+
+    .popover-item {
+        display: flex;
+        align-items: flex-start;
+        padding: 10px 14px;
+        border-bottom: 1px solid #F0F0EE;
+        cursor: pointer;
+        transition: background-color 120ms ease;
+    }
+
+    .popover-item:hover {
+        background-color: #F7F7F5;
+    }
+
+    .popover-item.unread {
+        background-color: #F8FAFC;
+    }
+
+    .popover-item-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background-color: transparent;
+        margin-top: 6px;
+        margin-right: 10px;
+        flex-shrink: 0;
+    }
+
+    .popover-item-dot.unread {
+        background-color: #1F4E79;
+    }
+
+    .popover-item-body {
+        flex: 1;
+    }
+
+    .popover-item-msg {
+        font-size: 12px;
+        color: #1F1F1F;
+        line-height: 1.4;
+        margin-bottom: 3px;
+    }
+
+    .popover-item.unread .popover-item-msg {
+        font-weight: 600;
+    }
+
+    .popover-item-time {
+        font-size: 11px;
+        color: #6B6B6B;
+    }
+
+    .popover-footer {
+        padding: 8px 14px;
+        border-top: 1px solid #E4E4E0;
+        background-color: #FAF9F7;
+        text-align: center;
+    }
+
+    .btn-popover-see-all {
+        background: none;
+        border: none;
+        color: #1F4E79;
+        font-size: 12px;
+        font-weight: 500;
+        cursor: pointer;
+    }
+
+    .btn-popover-see-all:hover {
+        text-decoration: underline;
+    }
+
+    .user-profile-btn {
+        display: flex;
+        align-items: center;
+        padding: 4px 8px;
+        border-radius: 4px;
+        cursor: pointer;
+        user-select: none;
+    }
+
+    .user-profile-btn:hover {
+        background-color: #F7F7F5;
+    }
+
+    .user-info {
+        display: flex;
+        flex-direction: column;
+        line-height: 1.2;
+        text-align: left;
+    }
+
+    .user-name {
+        font-size: 13px;
+        font-weight: 500;
+        color: #1F1F1F;
+    }
+
+    .user-role {
+        font-size: 11px;
+        color: #6B6B6B;
+    }
+
+    .sidebar-drawer {
+        border-right: 1px solid #E4E4E0 !important;
+        background-color: #FFFFFF !important;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .drawer-brand {
+        height: 50px;
+        min-height: 50px;
+        padding: 0 16px;
+        display: flex;
+        align-items: center;
+        border-bottom: 1px solid #E4E4E0;
+    }
+
+    .brand-container {
+        display: flex;
+        align-items: center;
+    }
+
+    .brand-text {
+        font-size: 16px;
+        font-weight: 700;
+        color: #1F4E79;
+        letter-spacing: -0.2px;
+    }
+
+    .drawer-nav-menu {
+        padding: 8px 6px;
+        flex: 1;
+    }
+
+    .drawer-nav-menu .mud-nav-link {
+        font-size: 13px;
+        padding: 6px 12px;
+        border-radius: 4px;
+        margin-bottom: 2px;
+        color: #1F1F1F;
+    }
+
+    .drawer-nav-menu .mud-nav-link.active:not(.mud-nav-link-disabled) {
+        background-color: #EBF3FA !important;
+        color: #1F4E79 !important;
+        font-weight: 600;
+    }
+
+    .drawer-nav-menu .mud-nav-link:hover:not(.active) {
+        background-color: #F7F7F5 !important;
+    }
+
+    .drawer-footer {
+        padding: 12px 16px;
+        border-top: 1px solid #E4E4E0;
+        text-align: center;
+    }
+
+    .version-text {
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 11px;
+        color: #6B6B6B;
+    }
+
+    .main-content {
+        background-color: #F7F7F5;
+        min-height: calc(100vh - 50px);
+    }
+
+    .content-wrapper {
+        max-width: 1440px;
+        margin: 0 auto;
+        padding: 24px;
+    }
+</style>

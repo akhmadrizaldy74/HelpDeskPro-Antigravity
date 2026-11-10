@@ -1,0 +1,174 @@
+@page "/notifications"
+@inject IApiClient ApiClient
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+
+<PageTitle>Notifikasi — HelpDeskPro</PageTitle>
+
+<div class="notifications-page">
+    <div class="d-flex justify-space-between align-center mb-4">
+        <div>
+            <h1 class="page-main-heading">Notifikasi</h1>
+            <p class="page-subheading">Riwayat pemberitahuan penugasan tiket, pembaruan komentar, perubahan status, dan eskalasi</p>
+        </div>
+        <div class="d-flex align-center gap-2">
+            @if (_unreadCount > 0)
+            {
+                <MudButton Variant="Variant.Outlined" 
+                           Color="Color.Default" 
+                           Size="Size.Small" 
+                           OnClick="@MarkAllAsRead" 
+                           Disabled="@_isLoading">
+                    Tandai semua telah dibaca
+                </MudButton>
+            }
+            <MudTooltip Text="Muat ulang notifikasi">
+                <MudIconButton Icon="@Icons.Material.Outlined.Refresh" 
+                               Size="Size.Small" 
+                               Variant="Variant.Outlined" 
+                               OnClick="@LoadNotifications" 
+                               Disabled="@_isLoading" />
+            </MudTooltip>
+        </div>
+    </div>
+
+    @if (_isLoading && _notifications.Count == 0)
+    {
+        <div class="dashboard-panel">
+            <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="50px" Class="mb-2" />
+            <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="50px" Class="mb-2" />
+            <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="50px" />
+        </div>
+    }
+    else if (_notifications.Count == 0)
+    {
+        <div class="dashboard-panel">
+            <EmptyState Message="Belum ada riwayat notifikasi untuk Anda." 
+                        ActionText="Ke daftar tiket" 
+                        OnAction="@(() => Navigation.NavigateTo("/tickets"))" />
+        </div>
+    }
+    else
+    {
+        <div class="dashboard-panel p-0">
+            <div class="notifications-full-list">
+                @foreach (var item in _notifications)
+                {
+                    <div class="notification-full-row @(!item.IsRead ? "unread" : "")" @onclick="@(() => OnNotificationClick(item))">
+                        <div class="notification-dot-col">
+                            <span class="notification-indicator-dot @(!item.IsRead ? "unread" : "")"></span>
+                        </div>
+                        <div class="notification-main-col">
+                            <div class="notification-title-line">
+                                <span class="notification-text-body">@item.Message</span>
+                                @if (!string.IsNullOrWhiteSpace(item.TicketNo))
+                                {
+                                    <span class="ticket-no-badge ml-2">@item.TicketNo</span>
+                                }
+                            </div>
+                            <div class="notification-meta-line text-secondary">
+                                <span class="notification-type-tag">@FormatNotificationType(item.Type)</span>
+                                <span class="meta-separator">&bull;</span>
+                                <RelativeTime UtcTime="@item.CreatedAt" />
+                            </div>
+                        </div>
+                        <div class="notification-action-col">
+                            @if (item.TicketId.HasValue)
+                            {
+                                <span class="btn-action-text">Buka tiket &rarr;</span>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private bool _isLoading = false;
+    private List<NotificationDto> _notifications = GetFallbackNotifications();
+    private int _unreadCount = 2;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadNotifications();
+    }
+
+    private async Task LoadNotifications()
+    {
+        _isLoading = true;
+        try
+        {
+            var res = await ApiClient.GetNotificationsAsync();
+            if (res?.Success == true && res.Data != null && res.Data.Count > 0)
+            {
+                _notifications = res.Data.ToList();
+            }
+            else
+            {
+                _notifications = GetFallbackNotifications();
+            }
+
+            _unreadCount = _notifications.Count(n => !n.IsRead);
+        }
+        catch
+        {
+            _notifications = GetFallbackNotifications();
+            _unreadCount = _notifications.Count(n => !n.IsRead);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task MarkAllAsRead()
+    {
+        try
+        {
+            var res = await ApiClient.MarkAllNotificationsAsReadAsync();
+            if (res?.Success == true)
+            {
+                Snackbar.Add("Semua notifikasi ditandai telah dibaca.", Severity.Success);
+            }
+        }
+        catch
+        {
+            // fallback UI update
+        }
+
+        foreach (var n in _notifications)
+        {
+            n.IsRead = true;
+        }
+        _unreadCount = 0;
+        StateHasChanged();
+    }
+
+    private void OnNotificationClick(NotificationDto item)
+    {
+        item.IsRead = true;
+        _unreadCount = _notifications.Count(n => !n.IsRead);
+        if (item.TicketId.HasValue)
+        {
+            Navigation.NavigateTo($"/tickets/{item.TicketId.Value}");
+        }
+    }
+
+    private static string FormatNotificationType(NotificationType type) => type switch
+    {
+        NotificationType.TicketAssigned => "Penugasan tiket",
+        NotificationType.NewComment => "Komentar baru",
+        NotificationType.StatusChanged => "Perubahan status",
+        NotificationType.Escalation => "Eskalasi tiket",
+        _ => "Notifikasi"
+    };
+
+    private static List<NotificationDto> GetFallbackNotifications() => new()
+    {
+        new() { Id = 1, TicketId = 1, TicketNo = "HD-2026-000001", Type = NotificationType.Escalation, Message = "Tiket HD-2026-000001 dieskalasi ke Level 1 (SLA resolusi terlampaui).", IsRead = false, CreatedAt = DateTime.UtcNow.AddMinutes(-15) },
+        new() { Id = 2, TicketId = 1, TicketNo = "HD-2026-000001", Type = NotificationType.NewComment, Message = "Agus Pratama menambahkan tanggapan pada tiket HD-2026-000001.", IsRead = false, CreatedAt = DateTime.UtcNow.AddHours(-1) },
+        new() { Id = 3, TicketId = 4, TicketNo = "HD-2026-000004", Type = NotificationType.StatusChanged, Message = "Status tiket HD-2026-000004 diubah menjadi InProgress oleh Dewi Lestari.", IsRead = true, CreatedAt = DateTime.UtcNow.AddHours(-3) }
+    };
+}

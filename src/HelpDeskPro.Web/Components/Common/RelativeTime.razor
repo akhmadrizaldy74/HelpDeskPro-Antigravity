@@ -1,0 +1,64 @@
+@namespace HelpDeskPro.Web.Components.Common
+@using System.Globalization
+
+<MudTooltip Text="@GetFullWibText()" Arrow="true" Placement="Placement.Top">
+    <span class="relative-time">
+        @GetRelativeText()
+    </span>
+</MudTooltip>
+
+@code {
+    [Parameter, EditorRequired] public DateTime UtcTime { get; set; }
+
+    private static readonly CultureInfo _idCulture = new("id-ID");
+
+    private string GetFullWibText()
+    {
+        var wibTime = UtcTime.Kind == DateTimeKind.Utc 
+            ? UtcTime.AddHours(7) 
+            : UtcTime.ToUniversalTime().AddHours(7);
+
+        return wibTime.ToString("d MMM yyyy, HH.mm 'WIB'", _idCulture);
+    }
+
+    private string GetRelativeText()
+    {
+        var now = DateTime.UtcNow;
+        var elapsed = now - (UtcTime.Kind == DateTimeKind.Utc ? UtcTime : UtcTime.ToUniversalTime());
+
+        if (elapsed.TotalMinutes < 1)
+        {
+            return "Baru saja";
+        }
+        if (elapsed.TotalMinutes < 60)
+        {
+            return $"{(int)elapsed.TotalMinutes} menit lalu";
+        }
+        if (elapsed.TotalHours < 24)
+        {
+            return $"{(int)elapsed.TotalHours} jam lalu";
+        }
+        if (elapsed.TotalDays < 30)
+        {
+            return $"{(int)elapsed.TotalDays} hari lalu";
+        }
+        if (elapsed.TotalDays < 365)
+        {
+            var months = (int)(elapsed.TotalDays / 30);
+            return $"{months} bulan lalu";
+        }
+
+        var years = (int)(elapsed.TotalDays / 365);
+        return $"{years} tahun lalu";
+    }
+}
+
+<style>
+    .relative-time {
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 13px;
+        color: #6B6B6B;
+        cursor: default;
+    }
+</style>
+

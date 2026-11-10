@@ -1,0 +1,27 @@
+@namespace HelpDeskPro.Web.Components.Common
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6" Style="font-size: 16px; font-weight: 600;">@Title</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudText Typo="Typo.body1" Style="font-size: 14px; color: #1F1F1F;">@Message</MudText>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Variant="Variant.Text" Style="text-transform: none; border-radius: 4px;">@CancelText</MudButton>
+        <MudButton Color="@Color" Variant="Variant.Filled" OnClick="Submit" Style="text-transform: none; border-radius: 4px;">@ConfirmText</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter] public string Title { get; set; } = "Konfirmasi";
+    [Parameter] public string Message { get; set; } = "Apakah Anda yakin ingin melanjutkan tindakan ini?";
+    [Parameter] public string ConfirmText { get; set; } = "Lanjutkan";
+    [Parameter] public string CancelText { get; set; } = "Batal";
+    [Parameter] public Color Color { get; set; } = Color.Primary;
+
+    private void Submit() => MudDialog.Close(DialogResult.Ok(true));
+    private void Cancel() => MudDialog.Cancel();
+}

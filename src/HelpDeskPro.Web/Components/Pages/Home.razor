@@ -1,0 +1,177 @@
+@page "/"
+@inject IDialogService DialogService
+@attribute [Authorize]
+
+<PageTitle>Kerangka UI & Komponen — HelpDeskPro</PageTitle>
+
+<div class="shell-overview">
+    <div class="overview-header mb-6">
+        <h1 class="header-title">Kerangka UI & Komponen Reusable</h1>
+        <p class="header-subtitle">Pratinjau token tema, tipografi IBM Plex, dan komponen standar HelpDeskPro</p>
+    </div>
+
+    <div class="component-grid">
+        <!-- Panel 1: Status Badges -->
+        <div class="card-panel">
+            <h2 class="panel-title">Badge status tiket</h2>
+            <div class="badge-row">
+                <StatusBadge Status="TicketStatus.Open" />
+                <StatusBadge Status="TicketStatus.InProgress" />
+                <StatusBadge Status="TicketStatus.Pending" />
+                <StatusBadge Status="TicketStatus.Resolved" />
+                <StatusBadge Status="TicketStatus.Closed" />
+                <StatusBadge Status="TicketStatus.Cancelled" />
+            </div>
+        </div>
+
+        <!-- Panel 2: Priority Badges -->
+        <div class="card-panel">
+            <h2 class="panel-title">Badge prioritas tiket</h2>
+            <div class="badge-row">
+                <PriorityBadge Priority="TicketPriority.Critical" />
+                <PriorityBadge Priority="TicketPriority.High" />
+                <PriorityBadge Priority="TicketPriority.Medium" />
+                <PriorityBadge Priority="TicketPriority.Low" />
+            </div>
+        </div>
+
+        <!-- Panel 3: SLA Countdown & Relative Time -->
+        <div class="card-panel">
+            <h2 class="panel-title">Hitung mundur SLA & Waktu relatif WIB</h2>
+            <div class="time-showcase">
+                <div class="time-item">
+                    <span class="item-label">SLA Aktif:</span>
+                    <SlaCountdown DueDate="@DateTime.UtcNow.AddHours(2).AddMinutes(15)" />
+                </div>
+                <div class="time-item">
+                    <span class="item-label">SLA Lewat:</span>
+                    <SlaCountdown DueDate="@DateTime.UtcNow.AddMinutes(-45)" IsBreached="true" />
+                </div>
+                <div class="time-item">
+                    <span class="item-label">Waktu Pembaruan (Hover untuk WIB):</span>
+                    <RelativeTime UtcTime="@DateTime.UtcNow.AddHours(-3)" />
+                </div>
+            </div>
+        </div>
+
+        <!-- Panel 4: Dialog Konfirmasi -->
+        <div class="card-panel">
+            <h2 class="panel-title">Dialog konfirmasi aksi destruktif</h2>
+            <p class="panel-desc">Aksi destruktif seperti pembatalan tiket atau penghapusan data wajib melalui dialog konfirmasi.</p>
+            <MudButton Variant="Variant.Outlined" 
+                       Color="Color.Error" 
+                       Size="Size.Small" 
+                       OnClick="@OpenConfirmDialogDemo"
+                       Class="mt-2"
+                       Style="text-transform: none; border-radius: 4px;">
+                Buka contoh dialog konfirmasi
+            </MudButton>
+        </div>
+
+        <!-- Panel 5: Empty State Component -->
+        <div class="card-panel full-width">
+            <h2 class="panel-title mb-3">Tampilan data kosong (Empty state)</h2>
+            <EmptyState Message="Belum ada tiket yang ditugaskan ke Anda saat ini." 
+                        ActionText="Muat ulang tiket" 
+                        OnAction="@(() => { })" />
+        </div>
+    </div>
+</div>
+
+@code {
+    private async Task OpenConfirmDialogDemo()
+    {
+        var parameters = new DialogParameters<ConfirmDialog>
+        {
+            { x => x.Title, "Konfirmasi pembatalan tiket" },
+            { x => x.Message, "Apakah Anda yakin ingin membatalkan tiket ini? Tindakan ini tidak dapat dibatalkan." },
+            { x => x.ConfirmText, "Batalkan tiket" },
+            { x => x.CancelText, "Kembali" },
+            { x => x.Color, Color.Error }
+        };
+
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.ExtraSmall };
+        await DialogService.ShowAsync<ConfirmDialog>("Konfirmasi", parameters, options);
+    }
+}
+
+<style>
+    .shell-overview {
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+
+    .overview-header {
+        border-bottom: 1px solid #E4E4E0;
+        padding-bottom: 16px;
+    }
+
+    .header-title {
+        font-size: 20px;
+        font-weight: 600;
+        color: #1F1F1F;
+        margin: 0 0 4px 0;
+    }
+
+    .header-subtitle {
+        font-size: 13px;
+        color: #6B6B6B;
+        margin: 0;
+    }
+
+    .component-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 20px;
+    }
+
+    .card-panel {
+        background-color: #FFFFFF;
+        border: 1px solid #E4E4E0;
+        border-radius: 6px;
+        padding: 20px;
+        box-sizing: border-box;
+    }
+
+    .card-panel.full-width {
+        grid-column: 1 / -1;
+    }
+
+    .panel-title {
+        font-size: 14px;
+        font-weight: 600;
+        color: #1F1F1F;
+        margin: 0 0 14px 0;
+    }
+
+    .panel-desc {
+        font-size: 13px;
+        color: #6B6B6B;
+        margin: 0 0 12px 0;
+    }
+
+    .badge-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+    }
+
+    .time-showcase {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .time-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 13px;
+    }
+
+    .item-label {
+        color: #6B6B6B;
+        width: 220px;
+    }
+</style>

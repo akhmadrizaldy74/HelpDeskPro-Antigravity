@@ -1,0 +1,56 @@
+@namespace HelpDeskPro.Web.Components.Common
+
+<span class="sla-countdown @(IsOverdue() ? "sla-overdue" : "sla-ontime")">
+    @GetText()
+</span>
+
+@code {
+    [Parameter, EditorRequired] public DateTime DueDate { get; set; }
+    [Parameter] public bool IsBreached { get; set; }
+    [Parameter] public bool IsCompleted { get; set; }
+
+    private bool IsOverdue() => !IsCompleted && (IsBreached || DateTime.UtcNow > DueDate);
+
+    private string GetText()
+    {
+        if (IsCompleted)
+        {
+            return "Selesai";
+        }
+
+        var now = DateTime.UtcNow;
+        if (IsOverdue())
+        {
+            var overdue = now - DueDate;
+            if (overdue.TotalHours >= 1)
+            {
+                return $"Lewat {(int)overdue.TotalHours}j {overdue.Minutes}m";
+            }
+            return $"Lewat {Math.Max(1, (int)overdue.TotalMinutes)}m";
+        }
+
+        var remaining = DueDate - now;
+        if (remaining.TotalHours >= 1)
+        {
+            return $"Sisa {(int)remaining.TotalHours}j {remaining.Minutes}m";
+        }
+        return $"Sisa {Math.Max(1, (int)remaining.TotalMinutes)}m";
+    }
+}
+
+<style>
+    .sla-countdown {
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 13px;
+        white-space: nowrap;
+    }
+    .sla-overdue {
+        color: #B42318;
+        font-weight: 600;
+    }
+    .sla-ontime {
+        color: #6B6B6B;
+        font-weight: 500;
+    }
+</style>
+

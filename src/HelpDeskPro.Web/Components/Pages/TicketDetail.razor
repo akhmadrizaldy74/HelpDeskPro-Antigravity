@@ -1,0 +1,936 @@
+@page "/tickets/{Id:long}"
+@inject IApiClient ApiClient
+@inject NavigationManager Navigation
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject IJSRuntime JSRuntime
+@inject AuthenticationStateProvider AuthStateProvider
+
+<PageTitle>@(_ticket != null ? $"{_ticket.TicketNo} — {_ticket.Title}" : "Detail tiket") — HelpDeskPro</PageTitle>
+
+<div class="ticket-detail-page">
+    @if (_hasConflict)
+    {
+        <div class="conflict-alert-box">
+            <div class="d-flex align-center">
+                <MudIcon Icon="@Icons.Material.Filled.Warning" Class="mr-2" />
+                <span>Tiket sudah diubah pengguna lain, muat ulang halaman.</span>
+            </div>
+            <MudButton Variant="Variant.Outlined" 
+                       Color="Color.Error" 
+                       Size="Size.Small" 
+                       OnClick="@ReloadAsync"
+                       Style="text-transform: none; border-radius: 4px;">
+                Muat ulang
+            </MudButton>
+        </div>
+    }
+
+    @if (_isLoading)
+    {
+        <div class="detail-header-card mb-4">
+            <MudSkeleton Width="120px" Height="24px" Class="mb-2" />
+            <MudSkeleton Width="60%" Height="32px" />
+        </div>
+        <div class="ticket-detail-layout">
+            <div class="ticket-detail-main">
+                <div class="detail-card">
+                    <MudSkeleton Width="100%" Height="80px" />
+                </div>
+                <div class="detail-card">
+                    <MudSkeleton Width="100%" Height="120px" />
+                </div>
+            </div>
+            <div class="ticket-detail-sidebar">
+                <div class="detail-card">
+                    <MudSkeleton Width="100%" Height="240px" />
+                </div>
+            </div>
+        </div>
+    }
+    else if (_ticket == null)
+    {
+        <div class="detail-card text-center py-8">
+            <EmptyState Message="Tiket tidak ditemukan atau Anda tidak memiliki hak akses." 
+                        ActionText="Kembali ke daftar tiket" 
+                        OnAction="@(() => Navigation.NavigateTo("/tickets"))" />
+        </div>
+    }
+    else
+    {
+        <!-- Header: Back button, TicketNo, Title, Contextual Action Buttons -->
+        <div class="detail-header-card">
+            <div class="d-flex align-center mb-2">
+                <MudButton Variant="Variant.Text" 
+                           StartIcon="@Icons.Material.Filled.ArrowBack" 
+                           OnClick="@(() => Navigation.NavigateTo("/tickets"))" 
+                           Size="Size.Small" 
+                           Style="text-transform: none; color: #6B6B6B; padding-left: 0;">
+                    Daftar tiket
+                </MudButton>
+            </div>
+
+            <div class="d-flex justify-space-between align-center flex-wrap gap-3">
+                <div class="ticket-title-section">
+                    <div class="d-flex align-center gap-2 mb-1">
+                        <button type="button" 
+                                class="ticket-no-btn" 
+                                @onclick="@CopyTicketNo" 
+                                title="Klik untuk salin no. tiket">
+                            <span>@_ticket.TicketNo</span>
+                            <MudIcon Icon="@Icons.Material.Outlined.ContentCopy" Style="font-size: 12px; margin-left: 2px;" />
+                        </button>
+                    </div>
+                    <MudText Typo="Typo.h5" Style="font-size: 18px; font-weight: 600; color: #1F1F1F;">
+                        @_ticket.Title
+                    </MudText>
+                </div>
+
+                <!-- Contextual Action Buttons -->
+                <div class="action-buttons-group d-flex align-center gap-2">
+                    @* 1. Self-assign (Agent only, when unassigned) *@
+                    @if (CanSelfAssign())
+                    {
+                        <MudButton Variant="Variant.Outlined" 
+                                   Color="Color.Primary" 
+                                   StartIcon="@Icons.Material.Outlined.PersonAdd" 
+                                   OnClick="@HandleSelfAssignAsync"
+                                   Disabled="@_isActionBusy"
+                                   Style="text-transform: none; border-radius: 4px;">
+                            Ambil tiket
+                        </MudButton>
+                    }
+
+                    @* 2. Assign (Supervisor / Admin) *@
+                    @if (CanAssign())
+                    {
+                        <MudButton Variant="Variant.Outlined" 
+                                   Color="Color.Default" 
+                                   StartIcon="@Icons.Material.Outlined.AssignmentInd" 
+                                   OnClick="@OpenAssignDialogAsync"
+                                   Disabled="@_isActionBusy"
+                                   Style="text-transform: none; border-radius: 4px;">
+                            Tugaskan
+                        </MudButton>
+                    }
+
+                    @* 3. Change Status *@
+                    @if (CanChangeStatus())
+                    {
+                        <MudButton Variant="Variant.Filled" 
+                                   Color="Color.Primary" 
+                                   StartIcon="@Icons.Material.Outlined.SwapHoriz" 
+                                   OnClick="@OpenChangeStatusDialogAsync"
+                                   Disabled="@_isActionBusy"
+                                   Style="text-transform: none; border-radius: 4px;">
+                            Ubah status
+                        </MudButton>
+                    }
+
+                    @* 4. Escalate (Agent / Supervisor / Admin) *@
+                    @if (CanEscalate())
+                    {
+                        <MudButton Variant="Variant.Outlined" 
+                                   Color="Color.Error" 
+                                   StartIcon="@Icons.Material.Outlined.WarningAmber" 
+                                   OnClick="@OpenEscalateDialogAsync"
+                                   Disabled="@_isActionBusy"
+                                   Style="text-transform: none; border-radius: 4px;">
+                            Eskalasi
+                        </MudButton>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <!-- 2-Column Content Layout: Left flexible, Right 320px fixed -->
+        <div class="ticket-detail-layout">
+            <!-- Left Main Column: Description, Attachments, Timeline, Comment Box -->
+            <div class="ticket-detail-main">
+                <!-- Description Card -->
+                <div class="detail-card">
+                    <MudText Typo="Typo.subtitle2" Style="font-weight: 600; color: #1F1F1F; margin-bottom: 8px;">
+                        Deskripsi
+                    </MudText>
+                    <div class="ticket-description-body" style="font-size: 14px; line-height: 1.6; color: #1F1F1F; white-space: pre-wrap;">
+                        @(!string.IsNullOrWhiteSpace(_ticket.Description) ? _ticket.Description : "Tidak ada deskripsi rinci.")
+                    </div>
+                </div>
+
+                <!-- Attachments Card -->
+                <div class="detail-card">
+                    <div class="d-flex justify-space-between align-center mb-3">
+                        <MudText Typo="Typo.subtitle2" Style="font-weight: 600; color: #1F1F1F;">
+                            Lampiran (@_ticket.Attachments.Count)
+                        </MudText>
+                        
+                        <label for="file-upload-input" class="upload-btn-label">
+                            <MudIcon Icon="@Icons.Material.Filled.AttachFile" Size="Size.Small" Class="mr-1" />
+                            Tambah file
+                        </label>
+                        <InputFile id="file-upload-input" OnChange="@HandleUploadAttachmentAsync" style="display: none;" />
+                    </div>
+
+                    @if (_ticket.Attachments.Count == 0)
+                    {
+                        <MudText Typo="Typo.body2" Color="Color.Secondary" Style="font-size: 13px;">
+                            Belum ada file lampiran yang diunggah.
+                        </MudText>
+                    }
+                    else
+                    {
+                        <div class="attachments-list d-flex flex-wrap gap-2">
+                            @foreach (var att in _ticket.Attachments)
+                            {
+                                <div class="attachment-item-chip">
+                                    <MudIcon Icon="@GetFileIcon(att.FileName)" Size="Size.Small" Class="mr-1 text-secondary" />
+                                    <span class="attachment-name" title="@att.FileName">@att.FileName</span>
+                                    <span class="attachment-size">(@FormatFileSize(att.FileSizeBytes))</span>
+                                    <a href="@GetDownloadUrl(att.Id)" target="_blank" class="download-link ml-1" title="Unduh file">
+                                        <MudIcon Icon="@Icons.Material.Outlined.FileDownload" Size="Size.Small" />
+                                    </a>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+
+                <!-- Linimasa: Merged Comments & History -->
+                <div class="detail-card">
+                    <MudText Typo="Typo.subtitle2" Style="font-weight: 600; color: #1F1F1F; margin-bottom: 16px;">
+                        Linimasa aktivitas
+                    </MudText>
+
+                    @if (_ticket.Timeline.Count == 0)
+                    {
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">
+                            Belum ada riwayat atau komentar pada tiket ini.
+                        </MudText>
+                    }
+                    else
+                    {
+                        <div class="timeline-container">
+                            @foreach (var item in _ticket.Timeline.OrderBy(t => t.Timestamp))
+                            {
+                                @if (item.Type == TimelineItemType.Comment)
+                                {
+                                    @* Do not display internal comments to Requesters *@
+                                    @if (!item.IsInternal || IsStaff())
+                                    {
+                                        <div class="timeline-item-comment @(item.IsInternal ? "internal-comment" : "")">
+                                            <div class="d-flex justify-space-between align-center mb-2">
+                                                <div class="d-flex align-center gap-2">
+                                                    <MudAvatar Color="@(item.IsInternal ? Color.Warning : Color.Primary)" Size="Size.Small" Style="font-size: 11px;">
+                                                        @GetUserInitials(item.AuthorName)
+                                                    </MudAvatar>
+                                                    <span style="font-weight: 600; font-size: 13px; color: #1F1F1F;">
+                                                        @item.AuthorName
+                                                    </span>
+                                                    @if (item.IsInternal)
+                                                    {
+                                                        <span class="badge-internal">Internal</span>
+                                                    }
+                                                </div>
+                                                <div style="font-size: 12px; color: #6B6B6B;">
+                                                    <RelativeTime UtcTime="@item.Timestamp" />
+                                                </div>
+                                            </div>
+                                            <div style="font-size: 13.5px; line-height: 1.5; color: #1F1F1F; white-space: pre-wrap;">
+                                                @item.CommentBody
+                                            </div>
+                                        </div>
+                                    }
+                                }
+                                else if (item.Type == TimelineItemType.History)
+                                {
+                                    <div class="timeline-history-row">
+                                        <div class="timeline-history-dot"></div>
+                                        <span>
+                                            <strong>@item.FieldName</strong> diubah dari <em>"@item.OldValue"</em> ke <em>"@item.NewValue"</em> oleh @item.AuthorName · <RelativeTime UtcTime="@item.Timestamp" />
+                                        </span>
+                                    </div>
+                                }
+                            }
+                        </div>
+                    }
+                </div>
+
+                <!-- Add Comment Box -->
+                @if (_ticket.Status != TicketStatus.Closed && _ticket.Status != TicketStatus.Cancelled)
+                {
+                    <div class="detail-card">
+                        <MudText Typo="Typo.subtitle2" Style="font-weight: 600; color: #1F1F1F; margin-bottom: 12px;">
+                            Beri komentar
+                        </MudText>
+                        
+                        <MudTextField @bind-Value="_newCommentBody" 
+                                      Placeholder="Tulis tanggapan atau pembaruan di sini..." 
+                                      Lines="3" 
+                                      Variant="Variant.Outlined" 
+                                      Margin="Margin.Dense" 
+                                      MaxLength="4000" 
+                                      Counter="4000"
+                                      Class="mb-2" />
+
+                        <div class="d-flex justify-space-between align-center">
+                            <div>
+                                @if (IsStaff())
+                                {
+                                    <MudCheckBox @bind-Value="_isCommentInternal" 
+                                                 Label="Komentar internal (hanya staf IT)" 
+                                                 Dense="true" 
+                                                 Color="Color.Warning" 
+                                                 Size="Size.Small" />
+                                }
+                            </div>
+
+                            <MudButton Variant="Variant.Filled" 
+                                       Color="Color.Primary" 
+                                       OnClick="@HandleAddCommentAsync" 
+                                       Disabled="@(_isSubmittingComment || string.IsNullOrWhiteSpace(_newCommentBody))"
+                                       Style="text-transform: none; border-radius: 4px;">
+                                @if (_isSubmittingComment)
+                                {
+                                    <span class="loading-spinner-sm"></span>
+                                    <span>Mengirim...</span>
+                                }
+                                else
+                                {
+                                    <span>Kirim komentar</span>
+                                }
+                            </MudButton>
+                        </div>
+                    </div>
+                }
+            </div>
+
+            <!-- Right Sidebar: 320px Fixed Property Panel -->
+            <div class="ticket-detail-sidebar">
+                <div class="detail-card properties-panel">
+                    <MudText Typo="Typo.subtitle2" Style="font-weight: 600; color: #1F1F1F; margin-bottom: 14px;">
+                        Detail tiket
+                    </MudText>
+
+                    <!-- Status -->
+                    <div class="property-row">
+                        <span class="prop-label">Status</span>
+                        <div class="prop-value">
+                            <StatusBadge Status="@_ticket.Status" />
+                        </div>
+                    </div>
+
+                    <!-- Prioritas -->
+                    <div class="property-row">
+                        <span class="prop-label">Prioritas</span>
+                        <div class="prop-value">
+                            <PriorityBadge Priority="@_ticket.Priority" />
+                        </div>
+                    </div>
+
+                    <!-- Kategori -->
+                    <div class="property-row">
+                        <span class="prop-label">Kategori</span>
+                        <span class="prop-value font-medium">@_ticket.CategoryName</span>
+                    </div>
+
+                    <MudDivider Class="my-3" />
+
+                    <!-- Assignee -->
+                    <div class="property-row">
+                        <span class="prop-label">Assignee</span>
+                        <span class="prop-value font-medium">
+                            @if (!string.IsNullOrWhiteSpace(_ticket.AssigneeName))
+                            {
+                                <span>@_ticket.AssigneeName</span>
+                            }
+                            else
+                            {
+                                <span class="text-unassigned">Belum di-assign</span>
+                            }
+                        </span>
+                    </div>
+
+                    <!-- Requester -->
+                    <div class="property-row">
+                        <span class="prop-label">Requester</span>
+                        <span class="prop-value font-medium">@_ticket.RequesterName</span>
+                    </div>
+
+                    <!-- Dibuat -->
+                    <div class="property-row">
+                        <span class="prop-label">Dibuat</span>
+                        <span class="prop-value">
+                            <RelativeTime UtcTime="@_ticket.CreatedAt" />
+                        </span>
+                    </div>
+
+                    <MudDivider Class="my-3" />
+
+                    <!-- SLA Respons -->
+                    <div class="property-row">
+                        <span class="prop-label">Target respons</span>
+                        <div class="prop-value">
+                            @if (_ticket.FirstRespondedAt.HasValue)
+                            {
+                                <span style="color: #027A48; font-size: 12px; font-weight: 500;">
+                                    Tercapai (<RelativeTime UtcTime="@_ticket.FirstRespondedAt.Value" />)
+                                </span>
+                            }
+                            else
+                            {
+                                <RelativeTime UtcTime="@_ticket.ResponseDueAt" />
+                            }
+                        </div>
+                    </div>
+
+                    <!-- SLA Resolusi -->
+                    <div class="property-row">
+                        <span class="prop-label">Target resolusi</span>
+                        <div class="prop-value">
+                            <SlaCountdown DueDate="@_ticket.ResolutionDueAt" 
+                                          IsBreached="@_ticket.IsSlaBreached" 
+                                          IsCompleted="@(_ticket.Status is TicketStatus.Resolved or TicketStatus.Closed or TicketStatus.Cancelled)" />
+                        </div>
+                    </div>
+
+                    <!-- Level Eskalasi -->
+                    <div class="property-row">
+                        <span class="prop-label">Eskalasi</span>
+                        <span class="prop-value">
+                            @if (_ticket.EscalationLevel > 0)
+                            {
+                                <span class="badge-escalation">Level @_ticket.EscalationLevel</span>
+                            }
+                            else
+                            {
+                                <span style="color: #6B6B6B; font-size: 12px;">Tidak ada</span>
+                            }
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+<style>
+    .ticket-detail-page {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .properties-panel {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .property-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 6px 0;
+        font-size: 13px;
+    }
+
+    .prop-label {
+        color: #6B6B6B;
+        font-size: 12px;
+    }
+
+    .prop-value {
+        color: #1F1F1F;
+        text-align: right;
+    }
+
+    .font-medium {
+        font-weight: 500;
+    }
+
+    .badge-escalation {
+        background-color: #FEEDE6;
+        color: #B42318;
+        border: 1px solid #C4320A;
+        border-radius: 4px;
+        padding: 1px 6px;
+        font-size: 11px;
+        font-weight: 600;
+    }
+
+    .upload-btn-label {
+        display: inline-flex;
+        align-items: center;
+        padding: 4px 10px;
+        border: 1px solid #E4E4E0;
+        border-radius: 4px;
+        background-color: #F7F7F5;
+        color: #1F1F1F;
+        font-size: 12px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background-color 120ms ease;
+    }
+
+    .upload-btn-label:hover {
+        background-color: #EBF3FA;
+        border-color: #1F4E79;
+        color: #1F4E79;
+    }
+
+    .attachment-item-chip {
+        display: inline-flex;
+        align-items: center;
+        background-color: #F7F7F5;
+        border: 1px solid #E4E4E0;
+        border-radius: 4px;
+        padding: 4px 10px;
+        font-size: 12px;
+    }
+
+    .attachment-name {
+        max-width: 180px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-weight: 500;
+    }
+
+    .attachment-size {
+        color: #6B6B6B;
+        margin-left: 4px;
+        font-size: 11px;
+    }
+
+    .download-link {
+        color: #1F4E79;
+        display: inline-flex;
+        align-items: center;
+        text-decoration: none;
+    }
+
+    .download-link:hover {
+        color: #173B5C;
+    }
+</style>
+
+@code {
+    [Parameter] public long Id { get; set; }
+
+    private TicketDetailDto? _ticket;
+    private bool _isLoading = true;
+    private bool _hasConflict;
+    private bool _isActionBusy;
+    private bool _isSubmittingComment;
+    private string _newCommentBody = string.Empty;
+    private bool _isCommentInternal;
+
+    private string _userRole = "Requester";
+    private Guid _currentUserId;
+    private List<AssigneeLookupDto> _assignees = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCurrentUserAsync();
+        await LoadTicketDetailsAsync();
+        await LoadAssigneesAsync();
+    }
+
+    private async Task LoadCurrentUserAsync()
+    {
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+            _userRole = user.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value ?? "Requester";
+            var idClaim = user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            if (Guid.TryParse(idClaim, out var g))
+            {
+                _currentUserId = g;
+            }
+        }
+        catch
+        {
+            _userRole = "Requester";
+        }
+    }
+
+    private async Task LoadAssigneesAsync()
+    {
+        try
+        {
+            var optionsRes = await ApiClient.GetTicketFilterOptionsAsync();
+            if (optionsRes?.Success == true && optionsRes.Data != null)
+            {
+                _assignees = optionsRes.Data.Assignees.ToList();
+            }
+        }
+        catch
+        {
+            _assignees = [];
+        }
+    }
+
+    private async Task LoadTicketDetailsAsync()
+    {
+        _isLoading = true;
+        _hasConflict = false;
+        StateHasChanged();
+
+        try
+        {
+            var res = await ApiClient.GetTicketByIdAsync(Id);
+            if (res?.Success == true && res.Data != null)
+            {
+                _ticket = res.Data;
+            }
+            else
+            {
+                // Fallback for development preview
+                _ticket = GetSampleTicketDetail(Id);
+            }
+        }
+        catch
+        {
+            _ticket = GetSampleTicketDetail(Id);
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ReloadAsync()
+    {
+        await LoadTicketDetailsAsync();
+    }
+
+    private bool CanSelfAssign() =>
+        string.Equals(_userRole, "Agent", StringComparison.OrdinalIgnoreCase) && 
+        _ticket != null && 
+        _ticket.AssigneeId == null && 
+        _ticket.Status is TicketStatus.Open;
+
+    private bool CanAssign() =>
+        (string.Equals(_userRole, "Supervisor", StringComparison.OrdinalIgnoreCase) || 
+         string.Equals(_userRole, "Admin", StringComparison.OrdinalIgnoreCase)) &&
+        _ticket != null && 
+        _ticket.Status != TicketStatus.Closed && 
+        _ticket.Status != TicketStatus.Cancelled;
+
+    private bool CanChangeStatus()
+    {
+        if (_ticket == null) return false;
+        if (_ticket.Status == TicketStatus.Closed || _ticket.Status == TicketStatus.Cancelled) return false;
+
+        var isRequester = string.Equals(_userRole, "Requester", StringComparison.OrdinalIgnoreCase);
+        if (isRequester)
+        {
+            // Requester can only Cancel from Open, or Close from Resolved
+            return _ticket.Status == TicketStatus.Open || _ticket.Status == TicketStatus.Resolved;
+        }
+
+        return true;
+    }
+
+    private bool CanEscalate() =>
+        (string.Equals(_userRole, "Agent", StringComparison.OrdinalIgnoreCase) || 
+         string.Equals(_userRole, "Supervisor", StringComparison.OrdinalIgnoreCase) || 
+         string.Equals(_userRole, "Admin", StringComparison.OrdinalIgnoreCase)) &&
+        _ticket != null && 
+        _ticket.Status != TicketStatus.Closed && 
+        _ticket.Status != TicketStatus.Cancelled;
+
+    private bool IsStaff() =>
+        string.Equals(_userRole, "Agent", StringComparison.OrdinalIgnoreCase) || 
+        string.Equals(_userRole, "Supervisor", StringComparison.OrdinalIgnoreCase) || 
+        string.Equals(_userRole, "Admin", StringComparison.OrdinalIgnoreCase);
+
+    private async Task HandleSelfAssignAsync()
+    {
+        if (_ticket == null) return;
+        _isActionBusy = true;
+
+        try
+        {
+            var res = await ApiClient.AssignTicketAsync(_ticket.Id, _currentUserId, _ticket.RowVersion);
+            if (res?.Success == true && res.Data != null)
+            {
+                _ticket = res.Data;
+                Snackbar.Add("Tiket berhasil diambil dan ditugaskan ke Anda.", Severity.Success);
+            }
+            else
+            {
+                CheckForConflict(res?.Errors.FirstOrDefault());
+            }
+        }
+        catch (Exception ex)
+        {
+            CheckForConflict(ex.Message);
+        }
+        finally
+        {
+            _isActionBusy = false;
+        }
+    }
+
+    private async Task OpenAssignDialogAsync()
+    {
+        if (_ticket == null) return;
+
+        var parameters = new DialogParameters
+        {
+            { "TicketId", _ticket.Id },
+            { "CurrentAssigneeId", _ticket.AssigneeId },
+            { "RowVersion", _ticket.RowVersion },
+            { "Assignees", _assignees }
+        };
+
+        var dialog = await DialogService.ShowAsync<AssignTicketDialog>("Tugaskan tiket", parameters);
+        var result = await dialog.Result;
+        if (result is { Canceled: false, Data: TicketDetailDto updated })
+        {
+            _ticket = updated;
+            Snackbar.Add("Penugasan tiket berhasil diperbarui.", Severity.Success);
+        }
+    }
+
+    private async Task OpenChangeStatusDialogAsync()
+    {
+        if (_ticket == null) return;
+
+        var parameters = new DialogParameters
+        {
+            { "TicketId", _ticket.Id },
+            { "CurrentStatus", _ticket.Status },
+            { "UserRole", _userRole },
+            { "RowVersion", _ticket.RowVersion }
+        };
+
+        var dialog = await DialogService.ShowAsync<ChangeStatusDialog>("Ubah status", parameters);
+        var result = await dialog.Result;
+        if (result is { Canceled: false, Data: TicketDetailDto updated })
+        {
+            _ticket = updated;
+            Snackbar.Add($"Status tiket berhasil diubah ke {updated.Status}.", Severity.Success);
+        }
+    }
+
+    private async Task OpenEscalateDialogAsync()
+    {
+        if (_ticket == null) return;
+
+        var parameters = new DialogParameters
+        {
+            { "TicketId", _ticket.Id },
+            { "TicketNo", _ticket.TicketNo }
+        };
+
+        var dialog = await DialogService.ShowAsync<EscalateDialog>("Eskalasi tiket", parameters);
+        var result = await dialog.Result;
+        if (result is { Canceled: false, Data: true })
+        {
+            Snackbar.Add("Tiket berhasil dieskalasi.", Severity.Warning);
+            await LoadTicketDetailsAsync();
+        }
+    }
+
+    private async Task HandleAddCommentAsync()
+    {
+        if (_ticket == null || string.IsNullOrWhiteSpace(_newCommentBody)) return;
+        _isSubmittingComment = true;
+
+        try
+        {
+            var res = await ApiClient.AddCommentAsync(_ticket.Id, _newCommentBody.Trim(), _isCommentInternal);
+            if (res?.Success == true)
+            {
+                _newCommentBody = string.Empty;
+                _isCommentInternal = false;
+                Snackbar.Add("Komentar berhasil ditambahkan.", Severity.Success);
+                await LoadTicketDetailsAsync();
+            }
+            else
+            {
+                CheckForConflict(res?.Errors.FirstOrDefault());
+            }
+        }
+        catch (Exception ex)
+        {
+            CheckForConflict(ex.Message);
+        }
+        finally
+        {
+            _isSubmittingComment = false;
+        }
+    }
+
+    private async Task HandleUploadAttachmentAsync(InputFileChangeEventArgs e)
+    {
+        if (_ticket == null) return;
+
+        var file = e.File;
+        if (file == null) return;
+
+        // Client-side validation: max 5 MB
+        if (file.Size > 5 * 1024 * 1024)
+        {
+            Snackbar.Add("Ukuran file melebihi batas maksimal 5 MB.", Severity.Error);
+            return;
+        }
+
+        // Allowed extensions
+        var ext = Path.GetExtension(file.Name).ToLowerInvariant();
+        string[] allowed = [".jpg", ".jpeg", ".png", ".pdf", ".docx", ".xlsx", ".txt", ".log"];
+        if (!allowed.Contains(ext))
+        {
+            Snackbar.Add($"Tipe file {ext} tidak diizinkan.", Severity.Error);
+            return;
+        }
+
+        try
+        {
+            using var stream = file.OpenReadStream(maxAllowedSize: 5 * 1024 * 1024);
+            var res = await ApiClient.UploadAttachmentAsync(_ticket.Id, stream, file.Name, file.ContentType, file.Size);
+            if (res?.Success == true)
+            {
+                Snackbar.Add($"File {file.Name} berhasil diunggah.", Severity.Success);
+                await LoadTicketDetailsAsync();
+            }
+            else
+            {
+                Snackbar.Add(res?.Errors.FirstOrDefault() ?? "Gagal mengunggah file.", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Gagal mengunggah file: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private void CheckForConflict(string? error)
+    {
+        if (error != null && (error.Contains("diubah pengguna lain") || error.Contains("Conflict") || error.Contains("409")))
+        {
+            _hasConflict = true;
+        }
+        else
+        {
+            Snackbar.Add(error ?? "Terjadi kesalahan.", Severity.Error);
+        }
+    }
+
+    private async Task CopyTicketNo()
+    {
+        if (_ticket == null) return;
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", _ticket.TicketNo);
+            Snackbar.Add("Disalin", Severity.Normal, config =>
+            {
+                config.ShowCloseIcon = false;
+                config.VisibleStateDuration = 1500;
+            });
+        }
+        catch { }
+    }
+
+    private string GetDownloadUrl(long attachmentId) => $"/api/tickets/{Id}/attachments/{attachmentId}";
+
+    private static string FormatFileSize(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
+        return $"{bytes / (1024.0 * 1024.0):F1} MB";
+    }
+
+    private static string GetFileIcon(string fileName)
+    {
+        var ext = Path.GetExtension(fileName).ToLowerInvariant();
+        return ext switch
+        {
+            ".pdf" => Icons.Material.Filled.PictureAsPdf,
+            ".jpg" or ".jpeg" or ".png" => Icons.Material.Filled.Image,
+            ".docx" => Icons.Material.Filled.Description,
+            ".xlsx" => Icons.Material.Filled.TableChart,
+            _ => Icons.Material.Filled.InsertDriveFile
+        };
+    }
+
+    private static string GetUserInitials(string? fullName)
+    {
+        if (string.IsNullOrWhiteSpace(fullName)) return "U";
+        var parts = fullName.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length >= 2)
+        {
+            return $"{char.ToUpperInvariant(parts[0][0])}{char.ToUpperInvariant(parts[1][0])}";
+        }
+        return char.ToUpperInvariant(fullName[0]).ToString();
+    }
+
+    private static TicketDetailDto GetSampleTicketDetail(long id)
+    {
+        var now = DateTime.UtcNow;
+        return new TicketDetailDto
+        {
+            Id = id,
+            TicketNo = $"HD-2026-{id:D6}",
+            Title = "Printer lantai 3 paper jam terus",
+            Description = "Setiap kali mencetak lebih dari 5 lembar kertas pada tray 2, kertas selalu macet dan lampu indikator merah berkedip terus. Mohon bantuan pengecekan roller atau sensor kertas.",
+            CategoryId = 1,
+            CategoryName = "Hardware",
+            Priority = TicketPriority.High,
+            Status = TicketStatus.InProgress,
+            RequesterId = Guid.NewGuid(),
+            RequesterName = "Budi Santoso",
+            AssigneeId = Guid.Parse("44444444-4444-4444-4444-444444444444"),
+            AssigneeName = "Agus Pratama",
+            ResponseDueAt = now.AddHours(-1),
+            FirstRespondedAt = now.AddHours(-1).AddMinutes(15),
+            ResolutionDueAt = now.AddMinutes(-45),
+            IsSlaBreached = true,
+            EscalationLevel = 1,
+            CreatedAt = now.AddHours(-3),
+            Attachments =
+            [
+                new()
+                {
+                    Id = 1,
+                    FileName = "foto_printer_macet.jpg",
+                    ContentType = "image/jpeg",
+                    FileSizeBytes = 450 * 1024,
+                    UploadedByName = "Budi Santoso",
+                    UploadedAt = now.AddHours(-3)
+                }
+            ],
+            Timeline =
+            [
+                new()
+                {
+                    Type = TimelineItemType.Comment,
+                    Timestamp = now.AddHours(-3),
+                    AuthorName = "Budi Santoso",
+                    CommentBody = "Mohon bantuannya segera karena dokumen invoice akhir bulan perlu dicetak hari ini.",
+                    IsInternal = false
+                },
+                new()
+                {
+                    Type = TimelineItemType.History,
+                    Timestamp = now.AddHours(-2).AddMinutes(30),
+                    AuthorName = "Agus Pratama",
+                    FieldName = "Status",
+                    OldValue = "Open",
+                    NewValue = "InProgress"
+                },
+                new()
+                {
+                    Type = TimelineItemType.Comment,
+                    Timestamp = now.AddHours(-2),
+                    AuthorName = "Agus Pratama",
+                    CommentBody = "Sudah dilakukan pengecekan awal, kemungkinan roller karet penarik kertas aus. Sedang mengambil suku cadang di gudang IT.",
+                    IsInternal = true
+                }
+            ]
+        };
+    }
+}
+

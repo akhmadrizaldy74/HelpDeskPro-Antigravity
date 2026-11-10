@@ -1,0 +1,279 @@
+@namespace HelpDeskPro.Web.Components.Tickets
+@inject IApiClient ApiClient
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6" Style="font-size: 16px; font-weight: 600;">Ubah status tiket</MudText>
+    </TitleContent>
+    <DialogContent>
+        <div class="change-status-dialog-content">
+            @if (!string.IsNullOrWhiteSpace(_errorMessage))
+            {
+                <div class="dialog-error-alert">
+                    @_errorMessage
+                </div>
+            }
+
+            <div class="form-group mb-3">
+                <MudText Typo="Typo.caption" Class="form-label">Status saat ini</MudText>
+                <div class="mt-1">
+                    <StatusBadge Status="@CurrentStatus" />
+                </div>
+            </div>
+
+            <div class="form-group mb-3">
+                <MudSelect T="TicketStatus?" 
+                           Label="Status tujuan" 
+                           Value="@_targetStatus" 
+                           ValueChanged="@OnTargetStatusChanged"
+                           Dense="true" 
+                           Margin="Margin.Dense" 
+                           Variant="Variant.Outlined"
+                           Required="true">
+                    @foreach (var status in GetAllowedNextStatuses())
+                    {
+                        <MudSelectItem T="TicketStatus?" Value="@((TicketStatus?)status)">@GetStatusLabel(status)</MudSelectItem>
+                    }
+                </MudSelect>
+            </div>
+
+            @if (_targetStatus == TicketStatus.Pending)
+            {
+                <div class="form-group mb-3">
+                    <MudTextField @bind-Value="_reason" 
+                                  Label="Alasan pending *" 
+                                  Placeholder="Contoh: Menunggu suku cadang dari vendor atau konfirmasi pengguna..." 
+                                  Lines="3" 
+                                  Variant="Variant.Outlined" 
+                                  Margin="Margin.Dense" 
+                                  HelperText="Alasan wajib diisi dan akan dicatat sebagai komentar internal." />
+                </div>
+            }
+            else if (_targetStatus == TicketStatus.Resolved)
+            {
+                <div class="form-group mb-3">
+                    <MudTextField @bind-Value="_reason" 
+                                  Label="Catatan penyelesaian *" 
+                                  Placeholder="Contoh: Roller printer telah diganti dan dokumen uji cetak berjalan normal..." 
+                                  Lines="3" 
+                                  Variant="Variant.Outlined" 
+                                  Margin="Margin.Dense" 
+                                  HelperText="Catatan teknis penyelesaian masalah wajib diisi." />
+                </div>
+            }
+            else if (_targetStatus == TicketStatus.Cancelled)
+            {
+                <div class="form-group mb-3">
+                    <MudTextField @bind-Value="_reason" 
+                                  Label="Alasan pembatalan *" 
+                                  Placeholder="Contoh: Masalah terselesaikan sendiri atau tiket duplikat..." 
+                                  Lines="3" 
+                                  Variant="Variant.Outlined" 
+                                  Margin="Margin.Dense" 
+                                  HelperText="Alasan pembatalan wajib diisi." />
+                </div>
+            }
+            else if (CurrentStatus == TicketStatus.Resolved && _targetStatus == TicketStatus.InProgress)
+            {
+                <div class="form-group mb-3">
+                    <MudAlert Severity="Severity.Info" Dense="true" Class="mb-2">
+                        Tiket dibuka kembali (maksimal 7 hari setelah status Resolved).
+                    </MudAlert>
+                    <MudTextField @bind-Value="_reason" 
+                                  Label="Alasan buka kembali *" 
+                                  Placeholder="Contoh: Kendala muncul kembali setelah perangkat dihidupkan..." 
+                                  Lines="3" 
+                                  Variant="Variant.Outlined" 
+                                  Margin="Margin.Dense" />
+                </div>
+            }
+        </div>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Variant="Variant.Text" Disabled="@_isSubmitting" Style="text-transform: none; border-radius: 4px;">
+            Batal
+        </MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SubmitAsync" Disabled="@(_isSubmitting || !_targetStatus.HasValue)" Style="text-transform: none; border-radius: 4px;">
+            @if (_isSubmitting)
+            {
+                <span class="loading-spinner-sm"></span>
+                <span>Menyimpan...</span>
+            }
+            else
+            {
+                <span>Simpan status</span>
+            }
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+<style>
+    .change-status-dialog-content {
+        min-width: 380px;
+        max-width: 440px;
+    }
+
+    .form-label {
+        font-size: 12px;
+        color: #6B6B6B;
+        font-weight: 500;
+    }
+
+    .dialog-error-alert {
+        background-color: #FEEDE6;
+        color: #B42318;
+        border: 1px solid #C4320A;
+        border-radius: 4px;
+        padding: 8px 12px;
+        font-size: 13px;
+        margin-bottom: 12px;
+    }
+
+    .loading-spinner-sm {
+        width: 12px;
+        height: 12px;
+        border: 2px solid rgba(255, 255, 255, 0.4);
+        border-top-color: #FFFFFF;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+        margin-right: 6px;
+        display: inline-block;
+    }
+
+    @@keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+</style>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter] public long TicketId { get; set; }
+    [Parameter] public TicketStatus CurrentStatus { get; set; }
+    [Parameter] public string UserRole { get; set; } = "Requester";
+    [Parameter] public byte[]? RowVersion { get; set; }
+
+    private TicketStatus? _targetStatus;
+    private string _reason = string.Empty;
+    private string? _errorMessage;
+    private bool _isSubmitting;
+
+    protected override void OnInitialized()
+    {
+        var allowed = GetAllowedNextStatuses();
+        if (allowed.Count > 0)
+        {
+            _targetStatus = allowed[0];
+        }
+    }
+
+    private void OnTargetStatusChanged(TicketStatus? status)
+    {
+        _targetStatus = status;
+        _reason = string.Empty;
+        _errorMessage = null;
+    }
+
+    private List<TicketStatus> GetAllowedNextStatuses()
+    {
+        var list = new List<TicketStatus>();
+        var isRequester = string.Equals(UserRole, "Requester", StringComparison.OrdinalIgnoreCase);
+
+        if (isRequester)
+        {
+            if (CurrentStatus == TicketStatus.Open) list.Add(TicketStatus.Cancelled);
+            if (CurrentStatus == TicketStatus.Resolved) list.Add(TicketStatus.Closed);
+            return list;
+        }
+
+        // Agent / Supervisor / Admin
+        switch (CurrentStatus)
+        {
+            case TicketStatus.Open:
+                list.Add(TicketStatus.InProgress);
+                list.Add(TicketStatus.Cancelled);
+                break;
+            case TicketStatus.InProgress:
+                list.Add(TicketStatus.Pending);
+                list.Add(TicketStatus.Resolved);
+                break;
+            case TicketStatus.Pending:
+                list.Add(TicketStatus.InProgress);
+                break;
+            case TicketStatus.Resolved:
+                list.Add(TicketStatus.Closed);
+                list.Add(TicketStatus.InProgress);
+                break;
+        }
+
+        return list;
+    }
+
+    private async Task SubmitAsync()
+    {
+        if (!_targetStatus.HasValue) return;
+
+        // Validation rules according to FSD 4.5
+        if (_targetStatus == TicketStatus.Pending && string.IsNullOrWhiteSpace(_reason))
+        {
+            _errorMessage = "Alasan pending wajib diisi.";
+            return;
+        }
+
+        if (_targetStatus == TicketStatus.Resolved && string.IsNullOrWhiteSpace(_reason))
+        {
+            _errorMessage = "Catatan penyelesaian tiket wajib diisi.";
+            return;
+        }
+
+        if (_targetStatus == TicketStatus.Cancelled && string.IsNullOrWhiteSpace(_reason))
+        {
+            _errorMessage = "Alasan pembatalan tiket wajib diisi.";
+            return;
+        }
+
+        if (CurrentStatus == TicketStatus.Resolved && _targetStatus == TicketStatus.InProgress && string.IsNullOrWhiteSpace(_reason))
+        {
+            _errorMessage = "Alasan pembukaan kembali tiket wajib diisi.";
+            return;
+        }
+
+        _isSubmitting = true;
+        _errorMessage = null;
+
+        try
+        {
+            var result = await ApiClient.ChangeTicketStatusAsync(TicketId, _targetStatus.Value, _reason, RowVersion);
+            if (result?.Success == true && result.Data != null)
+            {
+                MudDialog.Close(DialogResult.Ok(result.Data));
+            }
+            else
+            {
+                _errorMessage = result?.Errors.FirstOrDefault() ?? "Gagal mengubah status tiket.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ex.Message;
+        }
+        finally
+        {
+            _isSubmitting = false;
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private static string GetStatusLabel(TicketStatus status) => status switch
+    {
+        TicketStatus.Open => "Open",
+        TicketStatus.InProgress => "In Progress",
+        TicketStatus.Pending => "Pending",
+        TicketStatus.Resolved => "Resolved",
+        TicketStatus.Closed => "Closed",
+        TicketStatus.Cancelled => "Cancelled",
+        _ => status.ToString()
+    };
+}
+

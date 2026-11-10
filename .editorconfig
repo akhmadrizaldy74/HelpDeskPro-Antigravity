@@ -1,0 +1,74 @@
+root = true
+
+[*]
+indent_style = space
+indent_size = 4
+end_of_line = crlf
+charset = utf-8
+trim_trailing_whitespace = true
+insert_final_newline = true
+
+[*.cs]
+# File-scoped namespaces (rules bagian 3 & 4)
+csharp_style_namespace_declarations = file_scoped:warning
+
+# Naming Rules (rules bagian 3)
+
+# 1. Private field: _camelCase
+dotnet_naming_rule.private_fields_with_underscore.symbols = private_field_symbols
+dotnet_naming_rule.private_fields_with_underscore.style = underscore_camel_case_style
+dotnet_naming_rule.private_fields_with_underscore.severity = warning
+
+dotnet_naming_symbols.private_field_symbols.applicable_kinds = field
+dotnet_naming_symbols.private_field_symbols.applicable_accessibilities = private
+
+dotnet_naming_style.underscore_camel_case_style.capitalization = camel_case
+dotnet_naming_style.underscore_camel_case_style.required_prefix = _
+
+# 2. Async methods must have 'Async' suffix
+dotnet_naming_rule.async_methods_must_end_with_async.symbols = async_method_symbols
+dotnet_naming_rule.async_methods_must_end_with_async.style = async_suffix_style
+dotnet_naming_rule.async_methods_must_end_with_async.severity = warning
+
+dotnet_naming_symbols.async_method_symbols.applicable_kinds = method
+dotnet_naming_symbols.async_method_symbols.applicable_accessibilities = *
+dotnet_naming_symbols.async_method_symbols.required_modifiers = async
+
+dotnet_naming_style.async_suffix_style.capitalization = pascal_case
+dotnet_naming_style.async_suffix_style.required_suffix = Async
+
+# 3. Interfaces must begin with 'I'
+dotnet_naming_rule.interfaces_must_start_with_i.symbols = interface_symbols
+dotnet_naming_rule.interfaces_must_start_with_i.style = begins_with_i_style
+dotnet_naming_rule.interfaces_must_start_with_i.severity = warning
+
+dotnet_naming_symbols.interface_symbols.applicable_kinds = interface
+dotnet_naming_symbols.interface_symbols.applicable_accessibilities = *
+
+dotnet_naming_style.begins_with_i_style.capitalization = pascal_case
+dotnet_naming_style.begins_with_i_style.required_prefix = I
+
+# 4. Classes, structs, enums, properties, methods, public members: PascalCase
+dotnet_naming_rule.types_and_members_must_be_pascal_case.symbols = type_and_member_symbols
+dotnet_naming_rule.types_and_members_must_be_pascal_case.style = pascal_case_style
+dotnet_naming_rule.types_and_members_must_be_pascal_case.severity = warning
+
+dotnet_naming_symbols.type_and_member_symbols.applicable_kinds = class, struct, enum, property, event
+dotnet_naming_symbols.type_and_member_symbols.applicable_accessibilities = public, internal, protected, protected_internal, private_protected
+
+dotnet_naming_style.pascal_case_style.capitalization = pascal_case
+
+# Code Analysis Rules
+# CA1848: Allow standard structured logger.LogInformation(...) per coding-standard.md Section 7
+dotnet_diagnostic.CA1848.severity = none
+# CA1707: Allow underscores in test names per coding-standard.md Section 8 (MethodName_Scenario_ExpectedResult)
+dotnet_diagnostic.CA1707.severity = none
+# CA1861: Allow inline constant array in EF Core generated migrations
+dotnet_diagnostic.CA1861.severity = none
+
+[*/Migrations/**]
+generated_code = true
+
+
+
+

@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build-and-test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore HelpDeskPro.sln
+
+      - name: Build solution
+        run: dotnet build HelpDeskPro.sln --no-restore --configuration Release
+
+      - name: Run tests with code coverage
+        run: dotnet test HelpDeskPro.sln --no-build --configuration Release --collect:"XPlat Code Coverage"
+

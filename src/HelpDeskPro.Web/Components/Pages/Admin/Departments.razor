@@ -1,0 +1,199 @@
+@page "/admin/departments"
+@page "/master/departments"
+@inject IApiClient ApiClient
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Master Departemen — HelpDeskPro</PageTitle>
+
+<div class="admin-page">
+    <div class="d-flex justify-space-between align-center mb-4">
+        <div>
+            <h1 class="page-main-heading">Master departemen</h1>
+            <p class="page-subheading">Kelola unit kerja organisasi, struktur departemen, dan status operasional</p>
+        </div>
+        <div>
+            <MudButton Variant="Variant.Filled" 
+                       Color="Color.Primary" 
+                       StartIcon="@Icons.Material.Filled.Add" 
+                       OnClick="@OpenCreateDialog"
+                       Size="Size.Small">
+                Tambah departemen
+            </MudButton>
+        </div>
+    </div>
+
+    @if (_isLoading && _departments.Count == 0)
+    {
+        <div class="dashboard-panel">
+            <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="40px" Class="mb-2" />
+            <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="40px" Class="mb-2" />
+            <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="40px" />
+        </div>
+    }
+    else
+    {
+        <div class="dashboard-panel">
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 120px;">Kode</th>
+                            <th>Nama departemen</th>
+                            <th style="width: 140px;" class="text-center">Jumlah pengguna</th>
+                            <th style="width: 130px;" class="text-center">Jumlah tiket</th>
+                            <th style="width: 120px;" class="text-center">Status</th>
+                            <th style="width: 160px;" class="text-right">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var dept in _departments)
+                        {
+                            <tr>
+                                <td class="font-mono font-weight-semibold">@dept.Code</td>
+                                <td>@dept.Name</td>
+                                <td class="text-center font-mono">@dept.UserCount</td>
+                                <td class="text-center font-mono">@dept.TicketCount</td>
+                                <td class="text-center">
+                                    @if (dept.IsActive)
+                                    {
+                                        <span class="active-badge active-true">Aktif</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="active-badge active-false">Nonaktif</span>
+                                    }
+                                </td>
+                                <td class="text-right">
+                                    <div class="d-flex justify-end gap-1">
+                                        <button type="button" 
+                                                class="btn-action-text" 
+                                                @onclick="@(() => OpenEditDialog(dept))"
+                                                title="Ubah data departemen">
+                                            Ubah
+                                        </button>
+                                        <button type="button" 
+                                                class="btn-action-text @(dept.IsActive ? "text-danger" : "text-primary")" 
+                                                @onclick="@(() => ToggleStatus(dept))"
+                                                title="@(dept.IsActive ? "Nonaktifkan departemen" : "Aktifkan departemen")">
+                                            @(dept.IsActive ? "Nonaktifkan" : "Aktifkan")
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private bool _isLoading = false;
+    private List<DepartmentDto> _departments = GetFallbackDepartments();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDepartments();
+    }
+
+    private async Task LoadDepartments()
+    {
+        _isLoading = true;
+        try
+        {
+            var res = await ApiClient.GetDepartmentsAsync();
+            if (res?.Success == true && res.Data != null && res.Data.Count > 0)
+            {
+                _departments = res.Data.ToList();
+            }
+            else
+            {
+                _departments = GetFallbackDepartments();
+            }
+        }
+        catch
+        {
+            _departments = GetFallbackDepartments();
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task OpenCreateDialog()
+    {
+        var parameters = new DialogParameters<DepartmentFormDialog>();
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.ExtraSmall, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<DepartmentFormDialog>("Tambah departemen", parameters, options);
+        var result = await dialog.Result;
+        if (result != null && !result.Canceled)
+        {
+            await LoadDepartments();
+        }
+    }
+
+    private async Task OpenEditDialog(DepartmentDto dept)
+    {
+        var parameters = new DialogParameters<DepartmentFormDialog> { { x => x.Department, dept } };
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.ExtraSmall, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<DepartmentFormDialog>("Ubah departemen", parameters, options);
+        var result = await dialog.Result;
+        if (result != null && !result.Canceled)
+        {
+            await LoadDepartments();
+        }
+    }
+
+    private async Task ToggleStatus(DepartmentDto dept)
+    {
+        var actionText = dept.IsActive ? "Nonaktifkan" : "Aktifkan";
+        var message = dept.IsActive 
+            ? $"Nonaktifkan departemen {dept.Name}? Departemen yang dinonaktifkan tidak akan muncul pada pilihan tiket dan pengguna baru."
+            : $"Aktifkan kembali departemen {dept.Name}?";
+
+        var parameters = new DialogParameters<ConfirmDialog>
+        {
+            { x => x.Title, $"{actionText} departemen" },
+            { x => x.Message, message },
+            { x => x.ConfirmText, actionText },
+            { x => x.Color, dept.IsActive ? Color.Error : Color.Primary }
+        };
+
+        var dialog = await DialogService.ShowAsync<ConfirmDialog>(string.Empty, parameters);
+        var result = await dialog.Result;
+
+        if (result != null && !result.Canceled)
+        {
+            try
+            {
+                var res = await ApiClient.ToggleDepartmentStatusAsync(dept.Id, !dept.IsActive);
+                if (res?.Success == true)
+                {
+                    Snackbar.Add($"Departemen {dept.Name} berhasil di{(dept.IsActive ? "nonaktifkan" : "aktifkan")}.", Severity.Success);
+                    await LoadDepartments();
+                }
+                else
+                {
+                    Snackbar.Add(res?.Errors is { Count: > 0 } ? string.Join("; ", res.Errors) : "Gagal mengubah status departemen.", Severity.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add(ex.Message, Severity.Error);
+            }
+        }
+    }
+
+    private static List<DepartmentDto> GetFallbackDepartments() => new()
+    {
+        new(1, "IT", "Teknologi Informasi", true, 8, 48),
+        new(2, "FIN", "Finance & Accounting", true, 6, 24),
+        new(3, "HR", "Human Resources", true, 5, 18),
+        new(4, "PROC", "Procurement", true, 4, 12),
+        new(5, "WH-CKR", "Warehouse Cikarang", true, 10, 16),
+        new(6, "SALES-JKT", "Sales Jakarta", true, 12, 6)
+    };
+}

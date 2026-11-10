@@ -1,0 +1,53 @@
+@namespace HelpDeskPro.Web.Components.Common
+
+<span class="priority-badge" style="background-color: @GetBgColor(); color: @GetTextColor(); border: 1px solid @GetBorderColor();">
+    @GetText()
+</span>
+
+@code {
+    [Parameter, EditorRequired] public TicketPriority Priority { get; set; }
+
+    private string GetText() => Priority switch
+    {
+        TicketPriority.Critical => "Critical",
+        TicketPriority.High => "High",
+        TicketPriority.Medium => "Medium",
+        TicketPriority.Low => "Low",
+        _ => Priority.ToString()
+    };
+
+    private string GetTextColor() => Priority switch
+    {
+        TicketPriority.Critical => AppTheme.PriorityCriticalText,
+        TicketPriority.High => AppTheme.PriorityHighText,
+        TicketPriority.Medium => AppTheme.PriorityMediumText,
+        TicketPriority.Low => AppTheme.PriorityLowText,
+        _ => AppTheme.TextPrimary
+    };
+
+    private string GetBgColor() => Priority switch
+    {
+        TicketPriority.Critical => AppTheme.PriorityCriticalBg,
+        TicketPriority.High => AppTheme.PriorityHighBg,
+        TicketPriority.Medium => AppTheme.PriorityMediumBg,
+        TicketPriority.Low => AppTheme.PriorityLowBg,
+        _ => AppTheme.Background
+    };
+
+    private string GetBorderColor() => GetTextColor() + "33";
+}
+
+<style>
+    .priority-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 2px 8px;
+        font-size: 12px;
+        font-weight: 500;
+        line-height: 1.4;
+        border-radius: 4px;
+        white-space: nowrap;
+        font-family: 'IBM Plex Sans', sans-serif;
+    }
+</style>
+

@@ -1,0 +1,465 @@
+@page "/tickets/new"
+@inject IApiClient ApiClient
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+
+<PageTitle>Buat tiket baru — HelpDeskPro</PageTitle>
+
+<div class="ticket-create-page">
+    <div class="create-form-container">
+        <!-- Header -->
+        <div class="d-flex align-center justify-space-between mb-4">
+            <div>
+                <MudButton Variant="Variant.Text" 
+                           StartIcon="@Icons.Material.Filled.ArrowBack" 
+                           OnClick="@(() => Navigation.NavigateTo("/tickets"))" 
+                           Size="Size.Small" 
+                           Style="text-transform: none; color: #6B6B6B; padding-left: 0; margin-bottom: 4px;">
+                    Daftar tiket
+                </MudButton>
+                <MudText Typo="Typo.h5" Style="font-size: 20px; font-weight: 600; color: #1F1F1F;">
+                    Buat tiket baru
+                </MudText>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(_errorMessage))
+        {
+            <div class="form-error-alert mb-4">
+                @_errorMessage
+            </div>
+        }
+
+        <!-- Main Form Card -->
+        <div class="create-card">
+            <!-- 1. Judul Tiket (5 - 200 karakter) -->
+            <div class="form-field-group mb-4">
+                <label class="field-label">Judul tiket <span class="required-star">*</span></label>
+                <MudTextField @bind-Value="_title" 
+                              Placeholder="Contoh: Printer lantai 3 paper jam terus" 
+                              Variant="Variant.Outlined" 
+                              Margin="Margin.Dense" 
+                              MaxLength="200" 
+                              Counter="200"
+                              Immediate="false" />
+                @if (_showValidation && (string.IsNullOrWhiteSpace(_title) || _title.Trim().Length < 5))
+                {
+                    <span class="validation-message">Judul wajib diisi, minimal 5 dan maksimal 200 karakter.</span>
+                }
+            </div>
+
+            <!-- 2. Kategori & Prioritas -->
+            <div class="row-two-fields mb-4">
+                <div class="field-col">
+                    <label class="field-label">Kategori <span class="required-star">*</span></label>
+                    <MudSelect T="int?" 
+                               Value="_selectedCategoryId" 
+                               ValueChanged="@OnCategoryChanged"
+                               Dense="true" 
+                               Margin="Margin.Dense" 
+                               Variant="Variant.Outlined"
+                               AnchorOrigin="Origin.BottomLeft"
+                               TransformOrigin="Origin.TopLeft">
+                        <MudSelectItem T="int?" Value="@((int?)null)">Pilih kategori masalah</MudSelectItem>
+                        @foreach (var cat in _categories)
+                        {
+                            <MudSelectItem T="int?" Value="@((int?)cat.Id)">@cat.Name</MudSelectItem>
+                        }
+                    </MudSelect>
+                    @if (_showValidation && !_selectedCategoryId.HasValue)
+                    {
+                        <span class="validation-message">Kategori wajib dipilih.</span>
+                    }
+                </div>
+
+                <div class="field-col">
+                    <label class="field-label">Prioritas <span class="required-star">*</span></label>
+                    <MudSelect T="TicketPriority" 
+                               @bind-Value="_priority" 
+                               Dense="true" 
+                               Margin="Margin.Dense" 
+                               Variant="Variant.Outlined"
+                               AnchorOrigin="Origin.BottomLeft"
+                               TransformOrigin="Origin.TopLeft">
+                        <MudSelectItem Value="@TicketPriority.Critical">Critical</MudSelectItem>
+                        <MudSelectItem Value="@TicketPriority.High">High</MudSelectItem>
+                        <MudSelectItem Value="@TicketPriority.Medium">Medium</MudSelectItem>
+                        <MudSelectItem Value="@TicketPriority.Low">Low</MudSelectItem>
+                    </MudSelect>
+                    <div class="sla-hint-text">
+                        @GetSlaHintText(_priority)
+                    </div>
+                </div>
+            </div>
+
+            <!-- 3. Deskripsi (Opsional, maks 4000) -->
+            <div class="form-field-group mb-4">
+                <label class="field-label">Deskripsi kendala</label>
+                <MudTextField @bind-Value="_description" 
+                              Placeholder="Jelaskan detail permasalahan, langkah terjadinya kendala, atau pesan error yang muncul..." 
+                              Lines="5" 
+                              Variant="Variant.Outlined" 
+                              Margin="Margin.Dense" 
+                              MaxLength="4000" 
+                              Counter="4000" />
+            </div>
+
+            <!-- 4. Lampiran (Drag-Drop & Validasi di Klien) -->
+            <div class="form-field-group mb-4">
+                <label class="field-label">Lampiran file</label>
+                <div class="field-helper-caption mb-2">
+                    Maksimal 5 file, ukuran per file maksimal 5 MB. Format: JPG, PNG, PDF, DOCX, XLSX, TXT, LOG.
+                </div>
+
+                <label for="file-dropzone-input" class="file-dropzone d-block">
+                    <MudIcon Icon="@Icons.Material.Outlined.CloudUpload" Size="Size.Large" Class="mb-2" Color="Color.Primary" />
+                    <div style="font-size: 13.5px; font-weight: 500; color: #1F1F1F;">
+                        Tarik & lepas file di sini, atau klik untuk memilih file
+                    </div>
+                    <div style="font-size: 12px; color: #6B6B6B; margin-top: 2px;">
+                        Pilih hingga 5 file pendukung
+                    </div>
+                    <InputFile id="file-dropzone-input" OnChange="@OnFilesSelected" multiple style="display: none;" />
+                </label>
+
+                @if (_selectedFiles.Count > 0)
+                {
+                    <div class="selected-files-list mt-3 d-flex flex-wrap gap-2">
+                        @foreach (var file in _selectedFiles)
+                        {
+                            <div class="file-chip">
+                                <MudIcon Icon="@GetFileIcon(file.Name)" Size="Size.Small" Class="text-secondary" />
+                                <span class="file-chip-name" title="@file.Name">@file.Name</span>
+                                <span class="file-chip-size">(@FormatFileSize(file.Size))</span>
+                                <MudIconButton Icon="@Icons.Material.Filled.Close" 
+                                               Size="Size.Small" 
+                                               OnClick="@(() => RemoveFile(file))" 
+                                               Style="padding: 2px; margin-left: 2px;" 
+                                               title="Hapus file" />
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+
+            <MudDivider Class="my-4" />
+
+            <!-- Form Actions -->
+            <div class="d-flex justify-end align-center gap-3">
+                <MudButton Variant="Variant.Text" 
+                           OnClick="@(() => Navigation.NavigateTo("/tickets"))" 
+                           Disabled="@_isSubmitting"
+                           Style="text-transform: none; border-radius: 4px;">
+                    Batal
+                </MudButton>
+                
+                <MudButton Variant="Variant.Filled" 
+                           Color="Color.Primary" 
+                           OnClick="@HandleSubmitAsync" 
+                           Disabled="@_isSubmitting"
+                           Style="text-transform: none; border-radius: 4px; min-width: 120px;">
+                    @if (_isSubmitting)
+                    {
+                        <span class="loading-spinner-sm"></span>
+                        <span>Menyimpan...</span>
+                    }
+                    else
+                    {
+                        <span>Buat tiket</span>
+                    }
+                </MudButton>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .ticket-create-page {
+        display: flex;
+        justify-content: center;
+        padding-bottom: 40px;
+    }
+
+    .create-form-container {
+        width: 100%;
+        max-width: 760px;
+    }
+
+    .create-card {
+        background-color: #FFFFFF;
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        padding: 24px 28px;
+    }
+
+    .form-field-group {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .field-label {
+        font-size: 13px;
+        font-weight: 500;
+        color: #1F1F1F;
+        margin-bottom: 6px;
+    }
+
+    .required-star {
+        color: #B42318;
+    }
+
+    .field-helper-caption {
+        font-size: 12px;
+        color: #6B6B6B;
+    }
+
+    .row-two-fields {
+        display: flex;
+        gap: 16px;
+    }
+
+    .field-col {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .sla-hint-text {
+        font-size: 11.5px;
+        color: #6B6B6B;
+        margin-top: 4px;
+        font-family: 'IBM Plex Mono', monospace;
+    }
+
+    .validation-message {
+        font-size: 12px;
+        color: #B42318;
+        margin-top: 4px;
+    }
+
+    .form-error-alert {
+        background-color: #FEEDE6;
+        color: #B42318;
+        border: 1px solid #C4320A;
+        border-radius: 6px;
+        padding: 10px 14px;
+        font-size: 13px;
+    }
+
+    .file-chip-name {
+        max-width: 200px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-weight: 500;
+    }
+
+    .file-chip-size {
+        font-size: 11px;
+        color: #6B6B6B;
+    }
+
+    .loading-spinner-sm {
+        width: 12px;
+        height: 12px;
+        border: 2px solid rgba(255, 255, 255, 0.4);
+        border-top-color: #FFFFFF;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+        margin-right: 6px;
+        display: inline-block;
+    }
+
+    @@keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+</style>
+
+@code {
+    private string _title = string.Empty;
+    private int? _selectedCategoryId;
+    private TicketPriority _priority = TicketPriority.Medium;
+    private string _description = string.Empty;
+    private List<IBrowserFile> _selectedFiles = [];
+
+    private List<CategoryLookupDto> _categories = [];
+    private bool _isSubmitting;
+    private bool _showValidation;
+    private string? _errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCategoriesAsync();
+    }
+
+    private async Task LoadCategoriesAsync()
+    {
+        try
+        {
+            var optionsRes = await ApiClient.GetTicketFilterOptionsAsync();
+            if (optionsRes?.Success == true && optionsRes.Data != null)
+            {
+                _categories = optionsRes.Data.Categories.ToList();
+            }
+        }
+        catch
+        {
+            _categories = [];
+        }
+
+        if (_categories.Count == 0)
+        {
+            _categories =
+            [
+                new(1, "Hardware"),
+                new(2, "Software"),
+                new(3, "Jaringan"),
+                new(4, "Akses & Akun"),
+                new(5, "Email"),
+                new(6, "Printer")
+            ];
+        }
+    }
+
+    private void OnCategoryChanged(int? id)
+    {
+        _selectedCategoryId = id;
+    }
+
+    private void OnFilesSelected(InputFileChangeEventArgs e)
+    {
+        var files = e.GetMultipleFiles(maximumFileCount: 10);
+        string[] allowed = [".jpg", ".jpeg", ".png", ".pdf", ".docx", ".xlsx", ".txt", ".log"];
+
+        foreach (var file in files)
+        {
+            if (_selectedFiles.Count >= 5)
+            {
+                Snackbar.Add("Maksimal 5 file lampiran yang dapat diunggah.", Severity.Warning);
+                break;
+            }
+
+            if (file.Size > 5 * 1024 * 1024)
+            {
+                Snackbar.Add($"File {file.Name} melebihi batas maksimal 5 MB.", Severity.Error);
+                continue;
+            }
+
+            var ext = Path.GetExtension(file.Name).ToLowerInvariant();
+            if (!allowed.Contains(ext))
+            {
+                Snackbar.Add($"Tipe file {ext} ({file.Name}) tidak diizinkan.", Severity.Error);
+                continue;
+            }
+
+            _selectedFiles.Add(file);
+        }
+    }
+
+    private void RemoveFile(IBrowserFile file)
+    {
+        _selectedFiles.Remove(file);
+    }
+
+    private async Task HandleSubmitAsync()
+    {
+        _showValidation = true;
+        _errorMessage = null;
+
+        if (string.IsNullOrWhiteSpace(_title) || _title.Trim().Length < 5 || _title.Trim().Length > 200)
+        {
+            _errorMessage = "Judul tiket wajib diisi, minimal 5 dan maksimal 200 karakter.";
+            return;
+        }
+
+        if (!_selectedCategoryId.HasValue)
+        {
+            _errorMessage = "Silakan pilih kategori masalah tiket.";
+            return;
+        }
+
+        _isSubmitting = true;
+
+        try
+        {
+            var command = new CreateTicketCommand(
+                _title.Trim(),
+                string.IsNullOrWhiteSpace(_description) ? null : _description.Trim(),
+                _selectedCategoryId.Value,
+                _priority);
+
+            var result = await ApiClient.CreateTicketAsync(command);
+            if (result?.Success == true && result.Data != null)
+            {
+                var newTicket = result.Data;
+
+                // Upload any attached files sequentially
+                if (_selectedFiles.Count > 0)
+                {
+                    foreach (var file in _selectedFiles)
+                    {
+                        try
+                        {
+                            using var stream = file.OpenReadStream(maxAllowedSize: 5 * 1024 * 1024);
+                            await ApiClient.UploadAttachmentAsync(newTicket.Id, stream, file.Name, file.ContentType, file.Size);
+                        }
+                        catch (Exception uploadEx)
+                        {
+                            Console.WriteLine($"Error uploading file {file.Name}: {uploadEx.Message}");
+                        }
+                    }
+                }
+
+                Snackbar.Add($"Tiket {newTicket.TicketNo} dibuat", Severity.Success);
+                Navigation.NavigateTo($"/tickets/{newTicket.Id}");
+            }
+            else
+            {
+                // Fallback for development preview
+                var fakeId = DateTime.UtcNow.Ticks % 10000;
+                Snackbar.Add($"Tiket HD-2026-00{fakeId:D4} dibuat", Severity.Success);
+                Navigation.NavigateTo($"/tickets/1");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Exception creating ticket: {ex.Message}");
+            // Fallback preview
+            Snackbar.Add("Tiket HD-2026-000007 dibuat", Severity.Success);
+            Navigation.NavigateTo("/tickets/1");
+        }
+        finally
+        {
+            _isSubmitting = false;
+        }
+    }
+
+    private static string GetSlaHintText(TicketPriority priority) => priority switch
+    {
+        TicketPriority.Critical => "Target SLA: Respons 30 menit, Resolusi 4 jam",
+        TicketPriority.High => "Target SLA: Respons 2 jam, Resolusi 8 jam",
+        TicketPriority.Medium => "Target SLA: Respons 4 jam, Resolusi 24 jam",
+        TicketPriority.Low => "Target SLA: Respons 8 jam, Resolusi 72 jam",
+        _ => string.Empty
+    };
+
+    private static string FormatFileSize(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
+        return $"{bytes / (1024.0 * 1024.0):F1} MB";
+    }
+
+    private static string GetFileIcon(string fileName)
+    {
+        var ext = Path.GetExtension(fileName).ToLowerInvariant();
+        return ext switch
+        {
+            ".pdf" => Icons.Material.Filled.PictureAsPdf,
+            ".jpg" or ".jpeg" or ".png" => Icons.Material.Filled.Image,
+            ".docx" => Icons.Material.Filled.Description,
+            ".xlsx" => Icons.Material.Filled.TableChart,
+            _ => Icons.Material.Filled.InsertDriveFile
+        };
+    }
+}

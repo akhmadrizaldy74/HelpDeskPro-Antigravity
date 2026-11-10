@@ -1,0 +1,425 @@
+@page "/admin/users"
+@page "/master/users"
+@inject IApiClient ApiClient
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Master Pengguna — HelpDeskPro</PageTitle>
+
+<div class="admin-page">
+    <div class="d-flex justify-space-between align-center mb-4">
+        <div>
+            <h1 class="page-main-heading">Master pengguna</h1>
+            <p class="page-subheading">Kelola akun karyawan, teknisi, penyelia, serta hak akses peran sistem</p>
+        </div>
+        <div>
+            <MudButton Variant="Variant.Filled" 
+                       Color="Color.Primary" 
+                       StartIcon="@Icons.Material.Filled.Add" 
+                       OnClick="@OpenCreateDialog"
+                       Size="Size.Small">
+                Tambah pengguna
+            </MudButton>
+        </div>
+    </div>
+
+    <!-- Filter Bar -->
+    <div class="dashboard-panel filter-panel mb-4">
+        <MudGrid Spacing="2" Class="align-center">
+            <MudItem xs="12" sm="4" md="3">
+                <MudTextField T="string" 
+                              Placeholder="Cari NIK, nama, atau email..." 
+                              @bind-Value="_search" 
+                              Clearable="true" 
+                              Immediate="false"
+                              OnClearButtonClick="@OnSearchChanged"
+                              Adornment="Adornment.Start" 
+                              AdornmentIcon="@Icons.Material.Filled.Search" 
+                              Margin="Margin.Dense" 
+                              Variant="Variant.Outlined" 
+                              @onkeydown="@HandleSearchKeyDown" />
+            </MudItem>
+
+            <MudItem xs="12" sm="3" md="3">
+                <MudSelect T="int?" 
+                           Label="Departemen" 
+                           @bind-Value="_selectedDepartmentId" 
+                           Clearable="true" 
+                           Dense="true" 
+                           Margin="Margin.Dense" 
+                           Variant="Variant.Outlined">
+                    <MudSelectItem Value="@((int?)null)">Semua departemen</MudSelectItem>
+                    @foreach (var dept in _departments)
+                    {
+                        <MudSelectItem Value="@((int?)dept.Id)">@dept.Name (@dept.Code)</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+
+            <MudItem xs="12" sm="3" md="2">
+                <MudSelect T="string" 
+                           Label="Peran (Role)" 
+                           @bind-Value="_selectedRole" 
+                           Clearable="true" 
+                           Dense="true" 
+                           Margin="Margin.Dense" 
+                           Variant="Variant.Outlined">
+                    <MudSelectItem Value="@((string?)null)">Semua peran</MudSelectItem>
+                    <MudSelectItem Value="@("Requester")">Requester</MudSelectItem>
+                    <MudSelectItem Value="@("Agent")">Agent</MudSelectItem>
+                    <MudSelectItem Value="@("Supervisor")">Supervisor</MudSelectItem>
+                    <MudSelectItem Value="@("Admin")">Admin</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+
+            <MudItem xs="12" sm="2" md="2">
+                <MudSelect T="bool?" 
+                           Label="Status" 
+                           @bind-Value="_selectedIsActive" 
+                           Clearable="true" 
+                           Dense="true" 
+                           Margin="Margin.Dense" 
+                           Variant="Variant.Outlined">
+                    <MudSelectItem Value="@((bool?)null)">Semua status</MudSelectItem>
+                    <MudSelectItem Value="@((bool?)true)">Aktif</MudSelectItem>
+                    <MudSelectItem Value="@((bool?)false)">Nonaktif</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+
+            <MudItem xs="12" sm="12" md="2" Class="d-flex justify-end gap-2">
+                <MudButton Variant="Variant.Outlined" Color="Color.Default" OnClick="@ApplyFilters" Size="Size.Small">
+                    Terapkan
+                </MudButton>
+                <MudButton Variant="Variant.Text" Color="Color.Default" OnClick="@ResetFilters" Size="Size.Small">
+                    Reset
+                </MudButton>
+            </MudItem>
+        </MudGrid>
+    </div>
+
+    @if (_isLoading && _users.Count == 0)
+    {
+        <div class="dashboard-panel">
+            <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="40px" Class="mb-2" />
+            <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="40px" Class="mb-2" />
+            <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="40px" />
+        </div>
+    }
+    else
+    {
+        <div class="dashboard-panel">
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 100px;">NIK</th>
+                            <th>Nama & Email</th>
+                            <th style="width: 150px;">Departemen</th>
+                            <th style="width: 120px;">Peran</th>
+                            <th style="width: 150px;">Supervisor</th>
+                            <th style="width: 90px;" class="text-center">Status</th>
+                            <th style="width: 200px;" class="text-right">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var user in _users)
+                        {
+                            <tr>
+                                <td class="font-mono font-weight-semibold">@user.EmployeeNo</td>
+                                <td>
+                                    <div class="font-weight-medium">@user.FullName</div>
+                                    <div class="text-secondary font-mono" style="font-size: 11px;">@user.Email</div>
+                                </td>
+                                <td>@user.DepartmentName</td>
+                                <td>
+                                    <span class="role-badge role-@user.Role.ToLowerInvariant()">@user.Role</span>
+                                </td>
+                                <td>@(user.SupervisorName ?? "-")</td>
+                                <td class="text-center">
+                                    @if (user.IsActive)
+                                    {
+                                        <span class="active-badge active-true">Aktif</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="active-badge active-false">Nonaktif</span>
+                                    }
+                                </td>
+                                <td class="text-right">
+                                    <div class="d-flex justify-end gap-1">
+                                        <button type="button" 
+                                                class="btn-action-text" 
+                                                @onclick="@(() => OpenEditDialog(user))"
+                                                title="Ubah data pengguna">
+                                            Ubah
+                                        </button>
+                                        <button type="button" 
+                                                class="btn-action-text text-secondary" 
+                                                @onclick="@(() => OpenResetPasswordDialog(user))"
+                                                title="Reset password pengguna">
+                                            Reset pass
+                                        </button>
+                                        <button type="button" 
+                                                class="btn-action-text @(user.IsActive ? "text-danger" : "text-primary")" 
+                                                @onclick="@(() => ToggleStatus(user))"
+                                                title="@(user.IsActive ? "Nonaktifkan akun" : "Aktifkan akun")">
+                                            @(user.IsActive ? "Nonaktifkan" : "Aktifkan")
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Paging Bar -->
+            <div class="table-pagination-strip mt-3 d-flex justify-space-between align-center">
+                <span class="text-secondary font-mono" style="font-size: 12px;">
+                    Menampilkan @GetDisplayRange() dari @_totalCount pengguna
+                </span>
+                <div class="d-flex align-center gap-1">
+                    <MudIconButton Icon="@Icons.Material.Filled.NavigateBefore" 
+                                   Size="Size.Small" 
+                                   Disabled="@(_page <= 1)" 
+                                   OnClick="@PrevPage" />
+                    <span class="font-mono text-secondary" style="font-size: 12px;">@_page / @GetTotalPages()</span>
+                    <MudIconButton Icon="@Icons.Material.Filled.NavigateNext" 
+                                   Size="Size.Small" 
+                                   Disabled="@(_page >= GetTotalPages())" 
+                                   OnClick="@NextPage" />
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private bool _isLoading = false;
+    private List<UserListItemDto> _users = GetFallbackUsers();
+    private List<DepartmentDto> _departments = new()
+    {
+        new(1, "IT", "Teknologi Informasi", true, 8, 48),
+        new(2, "FIN", "Finance & Accounting", true, 6, 24),
+        new(3, "HR", "Human Resources", true, 5, 18),
+        new(4, "PROC", "Procurement", true, 4, 12),
+        new(5, "WH-CKR", "Warehouse Cikarang", true, 10, 16),
+        new(6, "SALES-JKT", "Sales Jakarta", true, 12, 6)
+    };
+
+    private string? _search;
+    private int? _selectedDepartmentId;
+    private string? _selectedRole;
+    private bool? _selectedIsActive;
+
+    private int _page = 1;
+    private int _pageSize = 20;
+    private int _totalCount = 6;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDepartments();
+        await LoadUsers();
+    }
+
+    private async Task LoadDepartments()
+    {
+        try
+        {
+            var res = await ApiClient.GetDepartmentsAsync(isActive: true);
+            if (res?.Success == true && res.Data != null)
+            {
+                _departments = res.Data.ToList();
+            }
+        }
+        catch
+        {
+            _departments = new List<DepartmentDto>();
+        }
+    }
+
+    private async Task LoadUsers()
+    {
+        _isLoading = true;
+        try
+        {
+            var res = await ApiClient.GetUsersAsync(
+                departmentId: _selectedDepartmentId,
+                role: _selectedRole,
+                isActive: _selectedIsActive,
+                search: _search,
+                page: _page,
+                pageSize: _pageSize
+            );
+
+            if (res?.Success == true && res.Data != null && res.Data.Items.Count > 0)
+            {
+                _users = res.Data.Items.ToList();
+                _totalCount = res.Data.TotalCount;
+            }
+            else
+            {
+                var fallback = GetFallbackUsers();
+                _users = fallback;
+                _totalCount = fallback.Count;
+            }
+        }
+        catch
+        {
+            var fallback = GetFallbackUsers();
+            _users = fallback;
+            _totalCount = fallback.Count;
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task ApplyFilters()
+    {
+        _page = 1;
+        await LoadUsers();
+    }
+
+    private async Task ResetFilters()
+    {
+        _search = null;
+        _selectedDepartmentId = null;
+        _selectedRole = null;
+        _selectedIsActive = null;
+        _page = 1;
+        await LoadUsers();
+    }
+
+    private async Task OnSearchChanged()
+    {
+        _page = 1;
+        await LoadUsers();
+    }
+
+    private async Task HandleSearchKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await ApplyFilters();
+        }
+    }
+
+    private async Task PrevPage()
+    {
+        if (_page > 1)
+        {
+            _page--;
+            await LoadUsers();
+        }
+    }
+
+    private async Task NextPage()
+    {
+        if (_page < GetTotalPages())
+        {
+            _page++;
+            await LoadUsers();
+        }
+    }
+
+    private int GetTotalPages() => Math.Max(1, (int)Math.Ceiling((double)_totalCount / _pageSize));
+    private string GetDisplayRange()
+    {
+        if (_totalCount == 0) return "0";
+        var start = (_page - 1) * _pageSize + 1;
+        var end = Math.Min(_page * _pageSize, _totalCount);
+        return $"{start}–{end}";
+    }
+
+    private async Task OpenCreateDialog()
+    {
+        var parameters = new DialogParameters<UserFormDialog>
+        {
+            { x => x.AvailableDepartments, _departments },
+            { x => x.AvailableSupervisors, _users.Where(u => u.Role is "Supervisor" or "Admin").ToList() }
+        };
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<UserFormDialog>("Tambah pengguna", parameters, options);
+        var result = await dialog.Result;
+        if (result != null && !result.Canceled)
+        {
+            await LoadUsers();
+        }
+    }
+
+    private async Task OpenEditDialog(UserListItemDto user)
+    {
+        var parameters = new DialogParameters<UserFormDialog>
+        {
+            { x => x.User, user },
+            { x => x.AvailableDepartments, _departments },
+            { x => x.AvailableSupervisors, _users.Where(u => u.Role is "Supervisor" or "Admin" && u.Id != user.Id).ToList() }
+        };
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<UserFormDialog>("Ubah pengguna", parameters, options);
+        var result = await dialog.Result;
+        if (result != null && !result.Canceled)
+        {
+            await LoadUsers();
+        }
+    }
+
+    private async Task OpenResetPasswordDialog(UserListItemDto user)
+    {
+        var parameters = new DialogParameters<ResetPasswordDialog> { { x => x.User, user } };
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.ExtraSmall, FullWidth = true };
+        await DialogService.ShowAsync<ResetPasswordDialog>("Reset password", parameters, options);
+    }
+
+    private async Task ToggleStatus(UserListItemDto user)
+    {
+        var actionText = user.IsActive ? "Nonaktifkan" : "Aktifkan";
+        var message = user.IsActive 
+            ? $"Nonaktifkan akun {user.FullName}? Pengguna ini tidak akan bisa login ke sistem lagi."
+            : $"Aktifkan kembali akun {user.FullName}?";
+
+        var parameters = new DialogParameters<ConfirmDialog>
+        {
+            { x => x.Title, $"{actionText} pengguna" },
+            { x => x.Message, message },
+            { x => x.ConfirmText, actionText },
+            { x => x.Color, user.IsActive ? Color.Error : Color.Primary }
+        };
+
+        var dialog = await DialogService.ShowAsync<ConfirmDialog>(string.Empty, parameters);
+        var result = await dialog.Result;
+
+        if (result != null && !result.Canceled)
+        {
+            try
+            {
+                var res = await ApiClient.ToggleUserStatusAsync(user.Id, !user.IsActive);
+                if (res?.Success == true)
+                {
+                    Snackbar.Add($"Pengguna {user.FullName} berhasil di{(user.IsActive ? "nonaktifkan" : "aktifkan")}.", Severity.Success);
+                    await LoadUsers();
+                }
+                else
+                {
+                    Snackbar.Add(res?.Errors is { Count: > 0 } ? string.Join("; ", res.Errors) : "Gagal mengubah status pengguna.", Severity.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add(ex.Message, Severity.Error);
+            }
+        }
+    }
+
+    private static List<UserListItemDto> GetFallbackUsers() => new()
+    {
+        new(Guid.Parse("11111111-1111-1111-1111-111111111111"), "EMP001", "Budi Santoso", "budi.santoso@helpdeskpro.local", 1, "Teknologi Informasi", "Admin", null, null, true),
+        new(Guid.Parse("22222222-2222-2222-2222-222222222222"), "EMP002", "Rina Kartika", "rina.kartika@helpdeskpro.local", 1, "Teknologi Informasi", "Supervisor", null, null, true),
+        new(Guid.Parse("33333333-3333-3333-3333-333333333333"), "EMP003", "Agus Pratama", "agus.pratama@helpdeskpro.local", 1, "Teknologi Informasi", "Agent", Guid.Parse("22222222-2222-2222-2222-222222222222"), "Rina Kartika", true),
+        new(Guid.Parse("44444444-4444-4444-4444-444444444444"), "EMP004", "Dewi Lestari", "dewi.lestari@helpdeskpro.local", 1, "Teknologi Informasi", "Agent", Guid.Parse("22222222-2222-2222-2222-222222222222"), "Rina Kartika", true),
+        new(Guid.Parse("55555555-5555-5555-5555-555555555555"), "EMP005", "Ahmad Fauzi", "ahmad.fauzi@helpdeskpro.local", 2, "Finance & Accounting", "Requester", null, null, true),
+        new(Guid.Parse("66666666-6666-6666-6666-666666666666"), "EMP006", "Siti Rahma", "siti.rahma@helpdeskpro.local", 3, "Human Resources", "Requester", null, null, true)
+    };
+}

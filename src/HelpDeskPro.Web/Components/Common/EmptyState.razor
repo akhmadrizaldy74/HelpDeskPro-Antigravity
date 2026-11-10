@@ -1,0 +1,48 @@
+@namespace HelpDeskPro.Web.Components.Common
+
+<div class="empty-state-container">
+    <p class="empty-state-text">@Message</p>
+    @if (!string.IsNullOrWhiteSpace(ActionText))
+    {
+        <MudButton Variant="Variant.Filled" 
+                   Color="Color.Primary" 
+                   Size="Size.Small" 
+                   OnClick="@OnAction"
+                   Class="empty-state-btn">
+            @ActionText
+        </MudButton>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Message { get; set; } = string.Empty;
+    [Parameter] public string? ActionText { get; set; }
+    [Parameter] public EventCallback OnAction { get; set; }
+}
+
+<style>
+    .empty-state-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 48px 16px;
+        text-align: center;
+        background-color: #FFFFFF;
+        border: 1px solid #E4E4E0;
+        border-radius: 6px;
+    }
+    .empty-state-text {
+        font-size: 14px;
+        color: #6B6B6B;
+        margin-bottom: 16px;
+        margin-top: 0;
+    }
+    .empty-state-btn {
+        text-transform: none;
+        border-radius: 4px;
+        font-weight: 500;
+        padding: 6px 16px;
+    }
+</style>
+

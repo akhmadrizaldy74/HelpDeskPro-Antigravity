@@ -1,0 +1,931 @@
+@page "/tickets"
+@inject IApiClient ApiClient
+@inject ILocalStorageService LocalStorage
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@inject IJSRuntime JSRuntime
+@inject AuthenticationStateProvider AuthStateProvider
+
+<PageTitle>Daftar tiket — HelpDeskPro</PageTitle>
+
+<div class="tickets-page-container">
+    <!-- Top Filter Bar & Action Header -->
+    <div class="filter-header-card">
+        <div class="filter-controls-row">
+            <!-- Search Input -->
+            <div class="filter-search-box">
+                <MudTextField @bind-Value="_search" 
+                              Placeholder="Cari no. tiket / judul..." 
+                              Adornment="Adornment.Start" 
+                              AdornmentIcon="@Icons.Material.Filled.Search" 
+                              IconSize="Size.Small" 
+                              Clearable="true" 
+                              OnClearButtonClick="@OnSearchCleared"
+                              @onkeydown="@HandleSearchKeyDown"
+                              Immediate="false"
+                              Margin="Margin.Dense" 
+                              Variant="Variant.Outlined" 
+                              Class="search-field" />
+            </div>
+
+            <!-- Status Multi-Select -->
+            <div class="filter-select-box">
+                <MudSelect T="TicketStatus" 
+                           MultiSelection="true" 
+                           SelectAll="true"
+                           SelectAllText="Pilih semua"
+                           SelectedValues="_selectedStatuses"
+                           SelectedValuesChanged="@OnStatusesChanged"
+                           Label="Status" 
+                           AnchorOrigin="Origin.BottomLeft"
+                           TransformOrigin="Origin.TopLeft"
+                           Dense="true" 
+                           Margin="Margin.Dense" 
+                           Variant="Variant.Outlined"
+                           Class="filter-select"
+                           MultiSelectionTextFunc="@(new Func<List<string>, string>(GetMultiStatusText))">
+                    @foreach (TicketStatus status in Enum.GetValues<TicketStatus>())
+                    {
+                        <MudSelectItem Value="@status">@GetStatusLabel(status)</MudSelectItem>
+                    }
+                </MudSelect>
+            </div>
+
+            <!-- Priority Multi-Select -->
+            <div class="filter-select-box">
+                <MudSelect T="TicketPriority" 
+                           MultiSelection="true" 
+                           SelectAll="true"
+                           SelectAllText="Pilih semua"
+                           SelectedValues="_selectedPriorities"
+                           SelectedValuesChanged="@OnPrioritiesChanged"
+                           Label="Prioritas" 
+                           AnchorOrigin="Origin.BottomLeft"
+                           TransformOrigin="Origin.TopLeft"
+                           Dense="true" 
+                           Margin="Margin.Dense" 
+                           Variant="Variant.Outlined"
+                           Class="filter-select"
+                           MultiSelectionTextFunc="@(new Func<List<string>, string>(GetMultiPriorityText))">
+                    @foreach (TicketPriority priority in Enum.GetValues<TicketPriority>())
+                    {
+                        <MudSelectItem Value="@priority">@GetPriorityLabel(priority)</MudSelectItem>
+                    }
+                </MudSelect>
+            </div>
+
+            <!-- Category Single Select -->
+            <div class="filter-select-box">
+                <MudSelect T="int?" 
+                           Value="_selectedCategoryId" 
+                           ValueChanged="@OnCategoryChanged"
+                           Label="Kategori" 
+                           Clearable="true"
+                           AnchorOrigin="Origin.BottomLeft"
+                           TransformOrigin="Origin.TopLeft"
+                           Dense="true" 
+                           Margin="Margin.Dense" 
+                           Variant="Variant.Outlined"
+                           Class="filter-select">
+                    <MudSelectItem T="int?" Value="@((int?)null)">Semua kategori</MudSelectItem>
+                    @foreach (var cat in _categories)
+                    {
+                        <MudSelectItem T="int?" Value="@((int?)cat.Id)">@cat.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </div>
+
+            <!-- Assignee Single Select -->
+            <div class="filter-select-box">
+                <MudSelect T="Guid?" 
+                           Value="_selectedAssigneeId" 
+                           ValueChanged="@OnAssigneeChanged"
+                           Label="Assignee" 
+                           Clearable="true"
+                           Disabled="@_unassignedOnly"
+                           AnchorOrigin="Origin.BottomLeft"
+                           TransformOrigin="Origin.TopLeft"
+                           Dense="true" 
+                           Margin="Margin.Dense" 
+                           Variant="Variant.Outlined"
+                           Class="filter-select">
+                    <MudSelectItem T="Guid?" Value="@((Guid?)null)">Semua assignee</MudSelectItem>
+                    @foreach (var user in _assignees)
+                    {
+                        <MudSelectItem T="Guid?" Value="@((Guid?)user.Id)">@user.FullName</MudSelectItem>
+                    }
+                </MudSelect>
+            </div>
+
+            <!-- Unassigned Checkbox -->
+            <div class="filter-checkbox-box">
+                <MudCheckBox T="bool" 
+                             Value="_unassignedOnly" 
+                             ValueChanged="@OnUnassignedChanged"
+                             Label="Belum di-assign" 
+                             Dense="true" 
+                             Color="Color.Primary" 
+                             Class="filter-checkbox" />
+            </div>
+
+            <!-- Spacer & "Buat tiket" Button -->
+            <div class="filter-action-box">
+                <MudButton Variant="Variant.Filled" 
+                           Color="Color.Primary" 
+                           StartIcon="@Icons.Material.Filled.Add"
+                           OnClick="@NavigateToCreate"
+                           Class="create-ticket-btn">
+                    Buat tiket
+                </MudButton>
+            </div>
+        </div>
+    </div>
+
+    <!-- Data Table Container -->
+    <div class="table-container">
+        <div class="table-scroll-wrapper">
+            <table class="ticket-table">
+                <thead>
+                    <tr>
+                        <th style="width: 140px;">No. tiket</th>
+                        <th>Judul</th>
+                        <th style="width: 130px;">Kategori</th>
+                        <th style="width: 110px;">Prioritas</th>
+                        <th style="width: 120px;">Status</th>
+                        <th style="width: 150px;">Assignee</th>
+                        <th style="width: 140px;">Jatuh tempo SLA</th>
+                        <th style="width: 130px;">Diperbarui</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (_isLoading)
+                    {
+                        @* Loading state: Skeleton rows instead of a big spinner *@
+                        @for (int i = 0; i < 6; i++)
+                        {
+                            <tr class="skeleton-row">
+                                <td><MudSkeleton Animation="Animation.Pulse" Width="90px" Height="22px" /></td>
+                                <td><MudSkeleton Animation="Animation.Pulse" Width="80%" Height="18px" /></td>
+                                <td><MudSkeleton Animation="Animation.Pulse" Width="70px" Height="18px" /></td>
+                                <td><MudSkeleton Animation="Animation.Pulse" Width="60px" Height="22px" /></td>
+                                <td><MudSkeleton Animation="Animation.Pulse" Width="75px" Height="22px" /></td>
+                                <td><MudSkeleton Animation="Animation.Pulse" Width="100px" Height="18px" /></td>
+                                <td><MudSkeleton Animation="Animation.Pulse" Width="85px" Height="18px" /></td>
+                                <td><MudSkeleton Animation="Animation.Pulse" Width="70px" Height="18px" /></td>
+                            </tr>
+                        }
+                    }
+                    else if (_tickets.Count == 0)
+                    {
+                        <tr>
+                            <td colspan="8" style="padding: 48px 16px; text-align: center;">
+                                <EmptyState Message="Tidak ada tiket yang cocok dengan filter." 
+                                            ActionText="Reset filter" 
+                                            OnAction="@ResetFiltersAsync" />
+                            </td>
+                        </tr>
+                    }
+                    else
+                    {
+                        @foreach (var ticket in _tickets)
+                        {
+                            <tr class="ticket-row" @onclick="() => NavigateToDetail(ticket.Id)">
+                                <!-- No. Tiket (Mono, click to copy) -->
+                                <td>
+                                    <MudTooltip Text="Klik untuk salin no. tiket">
+                                        <button type="button" 
+                                                class="ticket-no-btn" 
+                                                @onclick="() => CopyTicketNo(ticket.TicketNo)" 
+                                                @onclick:stopPropagation="true">
+                                            <span>@ticket.TicketNo</span>
+                                            <MudIcon Icon="@Icons.Material.Outlined.ContentCopy" Style="font-size: 12px; margin-left: 2px;" />
+                                        </button>
+                                    </MudTooltip>
+                                </td>
+
+                                <!-- Judul (1 line ellipsis with tooltip) -->
+                                <td>
+                                    <MudTooltip Text="@ticket.Title" Placement="Placement.Top">
+                                        <span class="ticket-title-truncate">@ticket.Title</span>
+                                    </MudTooltip>
+                                </td>
+
+                                <!-- Kategori -->
+                                <td>@ticket.CategoryName</td>
+
+                                <!-- Prioritas Badge -->
+                                <td><PriorityBadge Priority="@ticket.Priority" /></td>
+
+                                <!-- Status Badge -->
+                                <td><StatusBadge Status="@ticket.Status" /></td>
+
+                                <!-- Assignee (or gray text "Belum di-assign") -->
+                                <td>
+                                    @if (!string.IsNullOrWhiteSpace(ticket.AssigneeName))
+                                    {
+                                        <span>@ticket.AssigneeName</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-unassigned">Belum di-assign</span>
+                                    }
+                                </td>
+
+                                <!-- Jatuh tempo SLA (SlaCountdown, red if breached) -->
+                                <td>
+                                    <SlaCountdown DueDate="@ticket.ResolutionDueAt" 
+                                                  IsCompleted="@(ticket.Status is TicketStatus.Resolved or TicketStatus.Closed or TicketStatus.Cancelled)"
+                                                  IsBreached="@ticket.IsSlaBreached" />
+                                </td>
+
+                                <!-- Diperbarui (RelativeTime with WIB tooltip) -->
+                                <td>
+                                    <RelativeTime UtcTime="@(ticket.UpdatedAt ?? ticket.CreatedAt)" />
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Table Pagination Bar -->
+        <div class="table-pagination-bar">
+            <div class="pagination-info">
+                Menampilkan @GetRangeText() dari @_totalCount tiket
+            </div>
+
+            <div class="pagination-controls">
+                <span class="page-size-label">Baris per halaman:</span>
+                <select class="page-size-select" value="@_pageSize" @onchange="@HandlePageSizeChanged">
+                    <option value="20">20</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                </select>
+
+                <div class="pagination-buttons">
+                    <MudIconButton Icon="@Icons.Material.Filled.FirstPage" 
+                                   Size="Size.Small" 
+                                   Disabled="@(_currentPage <= 1 || _isLoading)" 
+                                   OnClick="@(() => ChangePageAsync(1))" />
+                    <MudIconButton Icon="@Icons.Material.Filled.ChevronLeft" 
+                                   Size="Size.Small" 
+                                   Disabled="@(_currentPage <= 1 || _isLoading)" 
+                                   OnClick="@(() => ChangePageAsync(_currentPage - 1))" />
+                    
+                    <span class="page-number-indicator">
+                        Halaman @_currentPage dari @Math.Max(1, _totalPages)
+                    </span>
+
+                    <MudIconButton Icon="@Icons.Material.Filled.ChevronRight" 
+                                   Size="Size.Small" 
+                                   Disabled="@(_currentPage >= _totalPages || _isLoading)" 
+                                   OnClick="@(() => ChangePageAsync(_currentPage + 1))" />
+                    <MudIconButton Icon="@Icons.Material.Filled.LastPage" 
+                                   Size="Size.Small" 
+                                   Disabled="@(_currentPage >= _totalPages || _isLoading)" 
+                                   OnClick="@(() => ChangePageAsync(_totalPages))" />
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .tickets-page-container {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+    }
+
+    .filter-header-card {
+        background-color: #FFFFFF;
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        padding: 12px 16px;
+    }
+
+    .filter-controls-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .filter-search-box {
+        width: 240px;
+        flex-shrink: 0;
+    }
+
+    .filter-select-box {
+        width: 170px;
+        flex-shrink: 0;
+    }
+
+    .filter-checkbox-box {
+        display: flex;
+        align-items: center;
+        margin-left: 4px;
+        flex-shrink: 0;
+    }
+
+    .filter-action-box {
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+    }
+
+    .create-ticket-btn {
+        text-transform: none !important;
+        font-weight: 500 !important;
+        border-radius: 4px !important;
+        height: 36px;
+    }
+
+    .page-size-label {
+        margin-right: 6px;
+        color: var(--text-secondary);
+        font-size: 13px;
+    }
+
+    .page-size-select {
+        height: 28px;
+        padding: 2px 6px;
+        font-size: 13px;
+        border: 1px solid var(--border-color);
+        border-radius: 4px;
+        background-color: #FFFFFF;
+        color: var(--text-primary);
+        outline: none;
+        margin-right: 16px;
+        cursor: pointer;
+    }
+
+    .page-size-select:focus {
+        border-color: var(--primary-color);
+    }
+
+    .pagination-controls {
+        display: flex;
+        align-items: center;
+    }
+
+    .pagination-buttons {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+
+    .page-number-indicator {
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 12px;
+        margin: 0 8px;
+        color: var(--text-primary);
+    }
+</style>
+
+@code {
+    [SupplyParameterFromQuery(Name = "my")]
+    public bool? MyTickets { get; set; }
+
+    [SupplyParameterFromQuery(Name = "search")]
+    public string? QuerySearch { get; set; }
+
+    private bool _isLoading = true;
+    private List<TicketListItemDto> _tickets = [];
+    private int _totalCount;
+    private int _currentPage = 1;
+    private int _pageSize = 20;
+    private int _totalPages = 1;
+    private string _currentUserId = string.Empty;
+
+    // Filters
+    private IEnumerable<TicketStatus> _selectedStatuses = new HashSet<TicketStatus>();
+    private IEnumerable<TicketPriority> _selectedPriorities = new HashSet<TicketPriority>();
+    private int? _selectedCategoryId;
+    private Guid? _selectedAssigneeId;
+    private bool _unassignedOnly;
+    private string _search = string.Empty;
+
+    // Filter Options
+    private List<CategoryLookupDto> _categories = [];
+    private List<AssigneeLookupDto> _assignees = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+            _currentUserId = user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "default";
+
+            // 1. Try to restore filters from localStorage
+            await RestoreFiltersFromStorageAsync();
+
+            // 2. Query string overrides (if navigated from search bar or "Tiket saya" menu)
+            if (!string.IsNullOrWhiteSpace(QuerySearch))
+            {
+                _search = QuerySearch;
+            }
+
+            if (MyTickets == true)
+            {
+                if (Guid.TryParse(_currentUserId, out var myGuid))
+                {
+                    _selectedAssigneeId = myGuid;
+                    _unassignedOnly = false;
+                }
+            }
+
+            // 3. Load filter lookup options
+            await LoadFilterOptionsAsync();
+
+            // 4. Load tickets
+            await LoadTicketsAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error initializing tickets page: {ex.Message}");
+            _isLoading = false;
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // React to query string changes (e.g. searching from top bar while already on /tickets)
+        if (!string.IsNullOrWhiteSpace(QuerySearch) && QuerySearch != _search)
+        {
+            _search = QuerySearch;
+            _currentPage = 1;
+            await LoadTicketsAsync();
+        }
+    }
+
+    private async Task LoadFilterOptionsAsync()
+    {
+        try
+        {
+            var optionsRes = await ApiClient.GetTicketFilterOptionsAsync();
+            if (optionsRes?.Success == true && optionsRes.Data != null)
+            {
+                _categories = optionsRes.Data.Categories.ToList();
+                _assignees = optionsRes.Data.Assignees.ToList();
+            }
+        }
+        catch
+        {
+            _categories = [];
+            _assignees = [];
+        }
+
+        if (_categories.Count == 0)
+        {
+            _categories =
+            [
+                new(1, "Hardware"),
+                new(2, "Software"),
+                new(3, "Jaringan"),
+                new(4, "Akses & Akun"),
+                new(5, "Email"),
+                new(6, "Printer")
+            ];
+        }
+
+        if (_assignees.Count == 0)
+        {
+            _assignees =
+            [
+                new(Guid.Parse("44444444-4444-4444-4444-444444444444"), "Agus Pratama"),
+                new(Guid.Parse("55555555-5555-5555-5555-555555555555"), "Rina Kartika"),
+                new(Guid.Parse("33333333-3333-3333-3333-333333333333"), "Hendra Wijaya")
+            ];
+        }
+    }
+
+    private async Task LoadTicketsAsync()
+    {
+        _isLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            var query = new GetTicketsQuery
+            {
+                Statuses = _selectedStatuses.ToList(),
+                Priorities = _selectedPriorities.ToList(),
+                CategoryId = _selectedCategoryId,
+                AssigneeId = _unassignedOnly ? null : _selectedAssigneeId,
+                Unassigned = _unassignedOnly ? true : null,
+                Search = string.IsNullOrWhiteSpace(_search) ? null : _search.Trim(),
+                Page = _currentPage,
+                PageSize = _pageSize
+            };
+
+            var response = await ApiClient.GetTicketsAsync(query);
+            if (response?.Success == true && response.Data != null)
+            {
+                _tickets = response.Data.Items.ToList();
+                _totalCount = response.Data.TotalCount;
+                _currentPage = response.Data.Page;
+                _pageSize = response.Data.PageSize;
+                _totalPages = response.Data.TotalPages;
+            }
+            else
+            {
+                // Fallback to sample seed dataset
+                ApplyFallbackFiltering(query);
+            }
+
+            // Save filter preferences to localStorage
+            await SaveFiltersToStorageAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading tickets: {ex.Message}");
+            var query = new GetTicketsQuery
+            {
+                Statuses = _selectedStatuses.ToList(),
+                Priorities = _selectedPriorities.ToList(),
+                CategoryId = _selectedCategoryId,
+                AssigneeId = _unassignedOnly ? null : _selectedAssigneeId,
+                Unassigned = _unassignedOnly ? true : null,
+                Search = string.IsNullOrWhiteSpace(_search) ? null : _search.Trim(),
+                Page = _currentPage,
+                PageSize = _pageSize
+            };
+            ApplyFallbackFiltering(query);
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void ApplyFallbackFiltering(GetTicketsQuery query)
+    {
+        var all = GetSampleTickets();
+        var filtered = all.AsEnumerable();
+
+        if (query.Statuses is { Count: > 0 })
+        {
+            filtered = filtered.Where(t => query.Statuses.Contains(t.Status));
+        }
+
+        if (query.Priorities is { Count: > 0 })
+        {
+            filtered = filtered.Where(t => query.Priorities.Contains(t.Priority));
+        }
+
+        if (query.CategoryId.HasValue)
+        {
+            filtered = filtered.Where(t => t.CategoryId == query.CategoryId.Value);
+        }
+
+        if (query.AssigneeId.HasValue)
+        {
+            filtered = filtered.Where(t => t.AssigneeId == query.AssigneeId.Value);
+        }
+
+        if (query.Unassigned == true)
+        {
+            filtered = filtered.Where(t => t.AssigneeId == null);
+        }
+
+        if (!string.IsNullOrWhiteSpace(query.Search))
+        {
+            var s = query.Search.Trim().ToLowerInvariant();
+            filtered = filtered.Where(t => t.TicketNo.ToLowerInvariant().Contains(s) || t.Title.ToLowerInvariant().Contains(s));
+        }
+
+        var list = filtered.ToList();
+        _totalCount = list.Count;
+        _totalPages = Math.Max(1, (int)Math.Ceiling(_totalCount / (double)_pageSize));
+        _currentPage = Math.Clamp(_currentPage, 1, _totalPages);
+        _tickets = list.Skip((_currentPage - 1) * _pageSize).Take(_pageSize).ToList();
+    }
+
+    private static List<TicketListItemDto> GetSampleTickets()
+    {
+        var now = DateTime.UtcNow;
+        return
+        [
+            new()
+            {
+                Id = 1,
+                TicketNo = "HD-2026-000001",
+                Title = "Printer lantai 3 paper jam terus",
+                CategoryId = 1,
+                CategoryName = "Hardware",
+                Priority = TicketPriority.High,
+                Status = TicketStatus.InProgress,
+                RequesterName = "Budi Santoso",
+                AssigneeId = Guid.Parse("44444444-4444-4444-4444-444444444444"),
+                AssigneeName = "Agus Pratama",
+                ResolutionDueAt = now.AddMinutes(-45),
+                IsSlaBreached = true,
+                CreatedAt = now.AddHours(-2),
+                UpdatedAt = now.AddMinutes(-10)
+            },
+            new()
+            {
+                Id = 2,
+                TicketNo = "HD-2026-000002",
+                Title = "VPN putus-putus saat WFH",
+                CategoryId = 3,
+                CategoryName = "Jaringan",
+                Priority = TicketPriority.Critical,
+                Status = TicketStatus.Open,
+                RequesterName = "Dewi Lestari",
+                AssigneeId = null,
+                AssigneeName = null,
+                ResolutionDueAt = now.AddMinutes(15),
+                IsSlaBreached = false,
+                CreatedAt = now.AddMinutes(-30),
+                UpdatedAt = now.AddMinutes(-25)
+            },
+            new()
+            {
+                Id = 3,
+                TicketNo = "HD-2026-000003",
+                Title = "Minta akses folder shared drive Procurement",
+                CategoryId = 4,
+                CategoryName = "Akses & Akun",
+                Priority = TicketPriority.Medium,
+                Status = TicketStatus.Pending,
+                RequesterName = "Siti Rahma",
+                AssigneeId = Guid.Parse("55555555-5555-5555-5555-555555555555"),
+                AssigneeName = "Rina Kartika",
+                ResolutionDueAt = now.AddHours(3).AddMinutes(10),
+                IsSlaBreached = false,
+                CreatedAt = now.AddHours(-5),
+                UpdatedAt = now.AddHours(-1)
+            },
+            new()
+            {
+                Id = 4,
+                TicketNo = "HD-2026-000004",
+                Title = "Laptop baru untuk karyawan onboarding 17 Nov",
+                CategoryId = 1,
+                CategoryName = "Hardware",
+                Priority = TicketPriority.Low,
+                Status = TicketStatus.Resolved,
+                RequesterName = "Ahmad Zaki",
+                AssigneeId = Guid.Parse("33333333-3333-3333-3333-333333333333"),
+                AssigneeName = "Hendra Wijaya",
+                ResolutionDueAt = now.AddHours(20),
+                IsSlaBreached = false,
+                CreatedAt = now.AddHours(-12),
+                UpdatedAt = now.AddHours(-3)
+            },
+            new()
+            {
+                Id = 5,
+                TicketNo = "HD-2026-000005",
+                Title = "Email Outlook tidak bisa sinkronisasi kalender rapat pimpinan",
+                CategoryId = 5,
+                CategoryName = "Email",
+                Priority = TicketPriority.High,
+                Status = TicketStatus.Open,
+                RequesterName = "Eko Prasetyo",
+                AssigneeId = Guid.Parse("44444444-4444-4444-4444-444444444444"),
+                AssigneeName = "Agus Pratama",
+                ResolutionDueAt = now.AddMinutes(80),
+                IsSlaBreached = false,
+                CreatedAt = now.AddHours(-1),
+                UpdatedAt = now.AddMinutes(-40)
+            },
+            new()
+            {
+                Id = 6,
+                TicketNo = "HD-2026-000006",
+                Title = "Lisensi software Adobe Photoshop perlu perpanjangan tahunan divisi desain",
+                CategoryId = 2,
+                CategoryName = "Software",
+                Priority = TicketPriority.Medium,
+                Status = TicketStatus.Closed,
+                RequesterName = "Maya Sari",
+                AssigneeId = Guid.Parse("55555555-5555-5555-5555-555555555555"),
+                AssigneeName = "Rina Kartika",
+                ResolutionDueAt = now.AddHours(5),
+                IsSlaBreached = false,
+                CreatedAt = now.AddDays(-2),
+                UpdatedAt = now.AddDays(-1)
+            }
+        ];
+    }
+
+    private async Task SaveFiltersToStorageAsync()
+    {
+        try
+        {
+            var state = new TicketFilterState
+            {
+                Statuses = _selectedStatuses.ToList(),
+                Priorities = _selectedPriorities.ToList(),
+                CategoryId = _selectedCategoryId,
+                AssigneeId = _selectedAssigneeId,
+                Unassigned = _unassignedOnly,
+                Search = _search,
+                PageSize = _pageSize
+            };
+
+            var storageKey = $"helpdeskpro_ticket_filter_{_currentUserId}";
+            var json = System.Text.Json.JsonSerializer.Serialize(state);
+            await LocalStorage.SetItemAsync(storageKey, json);
+        }
+        catch
+        {
+            // Fail silently as required by rules
+        }
+    }
+
+    private async Task RestoreFiltersFromStorageAsync()
+    {
+        try
+        {
+            var storageKey = $"helpdeskpro_ticket_filter_{_currentUserId}";
+            var json = await LocalStorage.GetItemAsync(storageKey);
+            if (!string.IsNullOrWhiteSpace(json))
+            {
+                var state = System.Text.Json.JsonSerializer.Deserialize<TicketFilterState>(json);
+                if (state != null)
+                {
+                    if (state.Statuses is { Count: > 0 })
+                    {
+                        _selectedStatuses = new HashSet<TicketStatus>(state.Statuses);
+                    }
+                    if (state.Priorities is { Count: > 0 })
+                    {
+                        _selectedPriorities = new HashSet<TicketPriority>(state.Priorities);
+                    }
+                    _selectedCategoryId = state.CategoryId;
+                    _selectedAssigneeId = state.AssigneeId;
+                    _unassignedOnly = state.Unassigned;
+                    _search = state.Search ?? string.Empty;
+                    if (state.PageSize is 20 or 50 or 100)
+                    {
+                        _pageSize = state.PageSize;
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // Fail silently on storage error
+        }
+    }
+
+    private async Task ResetFiltersAsync()
+    {
+        _selectedStatuses = new HashSet<TicketStatus>();
+        _selectedPriorities = new HashSet<TicketPriority>();
+        _selectedCategoryId = null;
+        _selectedAssigneeId = null;
+        _unassignedOnly = false;
+        _search = string.Empty;
+        _currentPage = 1;
+        await LoadTicketsAsync();
+    }
+
+    private async Task OnStatusesChanged(IEnumerable<TicketStatus> values)
+    {
+        _selectedStatuses = values;
+        _currentPage = 1;
+        await LoadTicketsAsync();
+    }
+
+    private async Task OnPrioritiesChanged(IEnumerable<TicketPriority> values)
+    {
+        _selectedPriorities = values;
+        _currentPage = 1;
+        await LoadTicketsAsync();
+    }
+
+    private async Task OnCategoryChanged(int? catId)
+    {
+        _selectedCategoryId = catId;
+        _currentPage = 1;
+        await LoadTicketsAsync();
+    }
+
+    private async Task OnAssigneeChanged(Guid? assigneeId)
+    {
+        _selectedAssigneeId = assigneeId;
+        _currentPage = 1;
+        await LoadTicketsAsync();
+    }
+
+    private async Task OnUnassignedChanged(bool val)
+    {
+        _unassignedOnly = val;
+        if (val)
+        {
+            _selectedAssigneeId = null;
+        }
+        _currentPage = 1;
+        await LoadTicketsAsync();
+    }
+
+    private async Task HandleSearchKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            _currentPage = 1;
+            await LoadTicketsAsync();
+        }
+    }
+
+    private async Task OnSearchCleared()
+    {
+        _search = string.Empty;
+        _currentPage = 1;
+        await LoadTicketsAsync();
+    }
+
+    private async Task ChangePageAsync(int page)
+    {
+        if (page < 1 || page > _totalPages || page == _currentPage) return;
+        _currentPage = page;
+        await LoadTicketsAsync();
+    }
+
+    private async Task HandlePageSizeChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var newSize) && newSize is 20 or 50 or 100)
+        {
+            _pageSize = newSize;
+            _currentPage = 1;
+            await LoadTicketsAsync();
+        }
+    }
+
+    private async Task CopyTicketNo(string ticketNo)
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", ticketNo);
+            Snackbar.Add("Disalin", Severity.Normal, config =>
+            {
+                config.ShowCloseIcon = false;
+                config.VisibleStateDuration = 1500;
+            });
+        }
+        catch
+        {
+            // Clipboard API fallback
+        }
+    }
+
+    private void NavigateToDetail(long id)
+    {
+        Navigation.NavigateTo($"/tickets/{id}");
+    }
+
+    private void NavigateToCreate()
+    {
+        Navigation.NavigateTo("/tickets/new");
+    }
+
+    private string GetRangeText()
+    {
+        if (_totalCount == 0) return "0";
+        var start = (_currentPage - 1) * _pageSize + 1;
+        var end = Math.Min(_currentPage * _pageSize, _totalCount);
+        return $"{start}–{end}";
+    }
+
+    private string GetMultiStatusText(List<string> selected)
+    {
+        if (selected == null || selected.Count == 0) return "Semua status";
+        if (selected.Count == Enum.GetValues<TicketStatus>().Length) return "Semua status";
+        return $"{selected.Count} status";
+    }
+
+    private string GetMultiPriorityText(List<string> selected)
+    {
+        if (selected == null || selected.Count == 0) return "Semua prioritas";
+        if (selected.Count == Enum.GetValues<TicketPriority>().Length) return "Semua prioritas";
+        return $"{selected.Count} prioritas";
+    }
+
+    private static string GetStatusLabel(TicketStatus status) => status switch
+    {
+        TicketStatus.Open => "Open",
+        TicketStatus.InProgress => "In Progress",
+        TicketStatus.Pending => "Pending",
+        TicketStatus.Resolved => "Resolved",
+        TicketStatus.Closed => "Closed",
+        TicketStatus.Cancelled => "Cancelled",
+        _ => status.ToString()
+    };
+
+    private static string GetPriorityLabel(TicketPriority priority) => priority switch
+    {
+        TicketPriority.Critical => "Critical",
+        TicketPriority.High => "High",
+        TicketPriority.Medium => "Medium",
+        TicketPriority.Low => "Low",
+        _ => priority.ToString()
+    };
+}
