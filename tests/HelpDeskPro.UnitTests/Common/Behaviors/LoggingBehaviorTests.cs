@@ -19,7 +19,7 @@ public class LoggingBehaviorTests
         var behavior = new LoggingBehavior<SampleCommand, string>(logger);
         var request = new SampleCommand("TestData");
 
-        RequestHandlerDelegate<string> next = (ct) => Task.FromResult("Success");
+        RequestHandlerDelegate<string> next = () => Task.FromResult("Success");
 
         // Act
         var result = await behavior.Handle(request, next, CancellationToken.None);

@@ -8,7 +8,7 @@ using HelpDeskPro.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
-using Microsoft.OpenApi;
+using Microsoft.OpenApi.Models;
 using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -85,11 +85,18 @@ builder.Services.AddSwaggerGen(options =>
         Description = "Masukkan token JWT dengan format: Bearer {token}"
     });
 
-    options.AddSecurityRequirement(doc => new OpenApiSecurityRequirement
+    options.AddSecurityRequirement(new OpenApiSecurityRequirement
     {
         {
-            new OpenApiSecuritySchemeReference("Bearer", doc),
-            []
+            new OpenApiSecurityScheme
+            {
+                Reference = new OpenApiReference
+                {
+                    Type = ReferenceType.SecurityScheme,
+                    Id = "Bearer"
+                }
+            },
+            Array.Empty<string>()
         }
     });
 });
