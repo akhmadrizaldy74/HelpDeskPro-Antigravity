@@ -115,7 +115,7 @@ erDiagram
         nvarchar(100) FieldName "Changed property name"
         nvarchar(4000) OldValue "Previous value (nullable)"
         nvarchar(4000) NewValue "New value (nullable)"
-        uniqueidentifier ChangedById FK "References Users.Id (Restrict)"
+        uniqueidentifier ChangedById FK "References Users.Id (nullable, null=System)"
         datetime2 ChangedAt "Timestamp of modification (UTC)"
     }
 
@@ -295,7 +295,7 @@ Mencatat audit trail perubahan properti tiket (Status, Priority, Assignee, Categ
 | `FieldName` | `nvarchar(100)` | Tidak | - | Nama field yang diubah |
 | `OldValue` | `nvarchar(4000)`| Ya | `NULL` | Nilai sebelum perubahan |
 | `NewValue` | `nvarchar(4000)`| Ya | `NULL` | Nilai sesudah perubahan |
-| `ChangedById` | `uniqueidentifier` | Tidak | - | FK ke `Users(Id)` yang mengubah (OnDelete: Restrict) |
+| `ChangedById` | `uniqueidentifier` | Ya | `NULL` | FK ke `Users(Id)` yang mengubah (`NULL` jika aksi otomatis sistem, OnDelete: Restrict) |
 | `ChangedAt` | `datetime2` | Tidak | - | Waktu perubahan (UTC) |
 
 ---
@@ -370,5 +370,6 @@ Menyimpan daftar tanggal hari libur nasional yang dikecualikan dari jam kerja pe
 | **09/11/2026** | `20261109174605_AddIsActiveToUsers` | `Users` | Penambahan kolom `IsActive` (bit, default 1) pada tabel `Users` |
 | **10/11/2026** | `20261110163426_AddTicketRating` | `Tickets` | **CR-001:** Penambahan kolom `Rating` (int, nullable), `RatingComment` (nvarchar(500), nullable), dan `RatedAt` (datetime2, nullable) pada tabel `Tickets` |
 | **10/11/2026** | `20261110164950_AddHolidaysTable` | `Holidays` | **CR-002:** Penambahan tabel baru `Holidays` (Id, Date, Name) dengan unique index pada kolom Date untuk pengecualian jam kerja perhitungan SLA |
+| **11/11/2026** | `20261110184728_MakeTicketHistoryChangedByIdNullable` | `TicketHistories` | Mengubah kolom `ChangedById` menjadi nullable (`uniqueidentifier`, nullable: true) untuk mendukung aksi otomatis sistem (auto-close, dll) |
 
 

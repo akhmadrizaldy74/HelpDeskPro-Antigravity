@@ -55,8 +55,6 @@ public class RateTicketCommandHandler : IRequestHandler<RateTicketCommand, Ticke
         // Domain method handles validation, status change to Closed, and history recording
         ticket.Rate(request.Rating, request.Comment, currentUserId, userRole, utcNow);
 
-        await _context.SaveChangesAsync(cancellationToken);
-
         // Notify Assignee if assigned
         if (ticket.AssigneeId.HasValue && ticket.AssigneeId.Value != currentUserId)
         {
@@ -71,6 +69,8 @@ public class RateTicketCommandHandler : IRequestHandler<RateTicketCommand, Ticke
                 $"Tiket {ticket.TicketNo} telah selesai dan diberi rating {request.Rating}/5 bintang.{commentSnippet}",
                 cancellationToken);
         }
+
+        await _context.SaveChangesAsync(cancellationToken);
 
         // Return refreshed detail DTO
         return await _sender.Send(new GetTicketByIdQuery(ticket.Id), cancellationToken);

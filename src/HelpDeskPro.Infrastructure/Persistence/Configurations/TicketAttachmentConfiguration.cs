@@ -33,6 +33,8 @@ public class TicketAttachmentConfiguration : IEntityTypeConfiguration<TicketAtta
             .WithMany(u => u.Attachments)
             .HasForeignKey(a => a.UploadedById)
             .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasQueryFilter(a => !a.Ticket.IsDeleted);
     }
 }
 

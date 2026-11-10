@@ -86,8 +86,6 @@ public class AddCommentCommandHandler : IRequestHandler<AddCommentCommand, Ticke
         var utcNow = _dateTimeProvider.UtcNow;
         var comment = ticket.AddComment(request.Body, request.IsInternal, currentUserId, role, utcNow);
 
-        await _context.SaveChangesAsync(cancellationToken);
-
         // FR-28: Notifikasi komentar baru di tiket saya
         if (!request.IsInternal && currentUserId != ticket.RequesterId)
         {
@@ -108,6 +106,8 @@ public class AddCommentCommandHandler : IRequestHandler<AddCommentCommand, Ticke
                 $"Komentar baru pada tiket {ticket.TicketNo}.",
                 cancellationToken);
         }
+
+        await _context.SaveChangesAsync(cancellationToken);
 
         var currentUser = await _context.Users
             .AsNoTracking()

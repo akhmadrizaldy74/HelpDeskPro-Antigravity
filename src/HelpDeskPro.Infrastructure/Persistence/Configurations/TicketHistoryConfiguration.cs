@@ -24,6 +24,9 @@ public class TicketHistoryConfiguration : IEntityTypeConfiguration<TicketHistory
             .HasMaxLength(4000)
             .IsRequired(false);
 
+        builder.Property(h => h.ChangedById)
+            .IsRequired(false);
+
         builder.HasOne(h => h.Ticket)
             .WithMany(t => t.Histories)
             .HasForeignKey(h => h.TicketId)
@@ -32,7 +35,10 @@ public class TicketHistoryConfiguration : IEntityTypeConfiguration<TicketHistory
         builder.HasOne(h => h.ChangedBy)
             .WithMany(u => u.Histories)
             .HasForeignKey(h => h.ChangedById)
-            .OnDelete(DeleteBehavior.Restrict);
+            .OnDelete(DeleteBehavior.Restrict)
+            .IsRequired(false);
+
+        builder.HasQueryFilter(h => !h.Ticket.IsDeleted);
     }
 }
 

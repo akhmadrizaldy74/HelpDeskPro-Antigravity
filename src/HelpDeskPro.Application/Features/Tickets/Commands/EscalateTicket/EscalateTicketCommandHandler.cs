@@ -89,14 +89,14 @@ public class EscalateTicketCommandHandler : IRequestHandler<EscalateTicketComman
         ticket.Escalations.Add(escalation);
         ticket.EscalationLevel = Math.Max(ticket.EscalationLevel, escalationLevel);
 
-        await _context.SaveChangesAsync(cancellationToken);
-
         await _notificationService.CreateNotificationAsync(
             recipient.Id,
             ticket.Id,
             NotificationType.Escalation,
             $"Eskalasi Manual: Tiket {ticket.TicketNo} - {request.Note.Trim()}",
             cancellationToken);
+
+        await _context.SaveChangesAsync(cancellationToken);
 
         return new EscalationDto
         {

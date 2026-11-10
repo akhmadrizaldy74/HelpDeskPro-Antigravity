@@ -41,6 +41,8 @@ public class EscalationConfiguration : IEntityTypeConfiguration<Escalation>
         builder.HasIndex(e => new { e.TicketId, e.Level, e.Reason })
             .IsUnique()
             .HasFilter("[Reason] <> 3");
+
+        builder.HasQueryFilter(e => !e.Ticket.IsDeleted);
     }
 }
 

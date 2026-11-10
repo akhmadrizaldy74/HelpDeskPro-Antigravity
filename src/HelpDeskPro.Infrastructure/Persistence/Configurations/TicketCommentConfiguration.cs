@@ -25,6 +25,8 @@ public class TicketCommentConfiguration : IEntityTypeConfiguration<TicketComment
             .WithMany(u => u.Comments)
             .HasForeignKey(c => c.AuthorId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasQueryFilter(c => !c.Ticket.IsDeleted);
     }
 }
 

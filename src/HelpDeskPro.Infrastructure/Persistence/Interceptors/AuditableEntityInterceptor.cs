@@ -44,6 +44,9 @@ public class AuditableEntityInterceptor : SaveChangesInterceptor
 
         var utcNow = _dateTimeProvider.UtcNow;
         var userId = _currentUserService.UserId;
+        var auditActor = string.IsNullOrWhiteSpace(userId) || userId == Guid.Empty.ToString()
+            ? "system"
+            : userId;
 
         foreach (var entry in context.ChangeTracker.Entries<IAuditableEntity>())
         {
@@ -51,20 +54,23 @@ public class AuditableEntityInterceptor : SaveChangesInterceptor
             {
                 case EntityState.Added:
                     entry.Entity.CreatedAt = utcNow;
-                    entry.Entity.CreatedBy = userId;
+                    if (string.IsNullOrWhiteSpace(entry.Entity.CreatedBy) || entry.Entity.CreatedBy == Guid.Empty.ToString())
+                    {
+                        entry.Entity.CreatedBy = auditActor;
+                    }
                     entry.Entity.IsDeleted = false;
                     break;
 
                 case EntityState.Modified:
                     entry.Entity.UpdatedAt = utcNow;
-                    entry.Entity.UpdatedBy = userId;
+                    entry.Entity.UpdatedBy = auditActor;
                     break;
 
                 case EntityState.Deleted:
                     entry.State = EntityState.Modified;
                     entry.Entity.IsDeleted = true;
                     entry.Entity.UpdatedAt = utcNow;
-                    entry.Entity.UpdatedBy = userId;
+                    entry.Entity.UpdatedBy = auditActor;
                     break;
             }
         }

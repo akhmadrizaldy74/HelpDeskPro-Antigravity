@@ -89,4 +89,64 @@ public class AuditableEntityInterceptorTests
         entity.UpdatedAt.Should().Be(now);
         entity.UpdatedBy.Should().Be(userId);
     }
+
+    [Fact]
+    public void SavingChanges_WhenNoCurrentUser_ShouldUseSystemAndNeverWriteGuidEmpty()
+    {
+        // Arrange
+        var now = new DateTime(2026, 11, 9, 12, 0, 0, DateTimeKind.Utc);
+
+        var dateTimeProvider = Substitute.For<IDateTimeProvider>();
+        dateTimeProvider.UtcNow.Returns(now);
+
+        var currentUserService = Substitute.For<ICurrentUserService>();
+        currentUserService.UserId.Returns((string?)null);
+
+        var interceptor = new AuditableEntityInterceptor(dateTimeProvider, currentUserService);
+
+        var options = new DbContextOptionsBuilder<TestDbContext>()
+            .UseSqlServer("Server=(localdb)\\mssqllocaldb;Database=TestDb;Trusted_Connection=True;")
+            .Options;
+
+        using var context = new TestDbContext(options);
+        var entity = new TestAuditableEntity { Name = "SystemAction" };
+        context.TestEntities.Add(entity);
+
+        // Act
+        interceptor.UpdateAuditEntities(context);
+
+        // Assert
+        entity.CreatedBy.Should().Be("system");
+        entity.CreatedBy.Should().NotBe(Guid.Empty.ToString());
+    }
+
+    [Fact]
+    public void SavingChanges_WhenUserIdIsGuidEmpty_ShouldUseSystem()
+    {
+        // Arrange
+        var now = new DateTime(2026, 11, 9, 12, 0, 0, DateTimeKind.Utc);
+
+        var dateTimeProvider = Substitute.For<IDateTimeProvider>();
+        dateTimeProvider.UtcNow.Returns(now);
+
+        var currentUserService = Substitute.For<ICurrentUserService>();
+        currentUserService.UserId.Returns(Guid.Empty.ToString());
+
+        var interceptor = new AuditableEntityInterceptor(dateTimeProvider, currentUserService);
+
+        var options = new DbContextOptionsBuilder<TestDbContext>()
+            .UseSqlServer("Server=(localdb)\\mssqllocaldb;Database=TestDb;Trusted_Connection=True;")
+            .Options;
+
+        using var context = new TestDbContext(options);
+        var entity = new TestAuditableEntity { Name = "EmptyGuidAction" };
+        context.TestEntities.Add(entity);
+
+        // Act
+        interceptor.UpdateAuditEntities(context);
+
+        // Assert
+        entity.CreatedBy.Should().Be("system");
+        entity.CreatedBy.Should().NotBe(Guid.Empty.ToString());
+    }
 }

@@ -106,7 +106,7 @@ public class Ticket : AuditableEntity<long>
     public void ChangeStatus(
         TicketStatus newStatus,
         string? reason,
-        Guid changedById,
+        Guid? changedById,
         string userRole,
         DateTime utcNow,
         DateTime? adjustedResolutionDueAt = null,
@@ -147,10 +147,15 @@ public class Ticket : AuditableEntity<long>
                 throw new BusinessRuleException("Alasan penundaan tiket wajib diisi.");
             }
 
+            if (!changedById.HasValue)
+            {
+                throw new BusinessRuleException("Pengguna yang mengubah status ke Pending wajib ditentukan.");
+            }
+
             // FR-13: Pindah ke Pending wajib menyertakan alasan (disimpan sebagai komentar internal)
             Comments.Add(new TicketComment
             {
-                AuthorId = changedById,
+                AuthorId = changedById.Value,
                 Body = reason.Trim(),
                 IsInternal = true,
                 CreatedAt = utcNow

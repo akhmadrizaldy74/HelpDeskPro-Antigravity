@@ -537,7 +537,7 @@ namespace HelpDeskPro.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("ChangedAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<Guid>("ChangedById")
+                    b.Property<Guid?>("ChangedById")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("FieldName")
@@ -848,8 +848,7 @@ namespace HelpDeskPro.Infrastructure.Persistence.Migrations
                     b.HasOne("HelpDeskPro.Domain.Entities.ApplicationUser", "ChangedBy")
                         .WithMany("Histories")
                         .HasForeignKey("ChangedById")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("HelpDeskPro.Domain.Entities.Ticket", "Ticket")
                         .WithMany("Histories")

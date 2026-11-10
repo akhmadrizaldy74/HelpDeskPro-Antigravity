@@ -7,7 +7,7 @@ public class TicketHistoryDto
     public string FieldName { get; set; } = string.Empty;
     public string? OldValue { get; set; }
     public string? NewValue { get; set; }
-    public Guid ChangedById { get; set; }
+    public Guid? ChangedById { get; set; }
     public string ChangedByName { get; set; } = string.Empty;
     public DateTime ChangedAt { get; set; }
 }

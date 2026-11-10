@@ -282,7 +282,7 @@
                                     <div class="timeline-history-row">
                                         <div class="timeline-history-dot"></div>
                                         <span>
-                                            <strong>@item.FieldName</strong> diubah dari <em>"@item.OldValue"</em> ke <em>"@item.NewValue"</em> oleh @item.AuthorName · <RelativeTime UtcTime="@item.Timestamp" />
+                                            <strong>@item.FieldName</strong> diubah dari <em>"@item.OldValue"</em> ke <em>"@item.NewValue"</em> oleh @(string.IsNullOrWhiteSpace(item.AuthorName) ? "Sistem" : item.AuthorName) · <RelativeTime UtcTime="@item.Timestamp" />
                                         </span>
                                     </div>
                                 }

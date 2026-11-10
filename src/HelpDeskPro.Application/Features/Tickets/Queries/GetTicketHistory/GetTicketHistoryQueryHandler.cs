@@ -89,7 +89,7 @@ public class GetTicketHistoryQueryHandler : IRequestHandler<GetTicketHistoryQuer
                 OldValue = h.OldValue,
                 NewValue = h.NewValue,
                 ChangedById = h.ChangedById,
-                ChangedByName = h.ChangedBy != null ? h.ChangedBy.FullName : "System",
+                ChangedByName = h.ChangedBy != null ? h.ChangedBy.FullName : "Sistem",
                 ChangedAt = h.ChangedAt
             })
             .ToListAsync(cancellationToken);

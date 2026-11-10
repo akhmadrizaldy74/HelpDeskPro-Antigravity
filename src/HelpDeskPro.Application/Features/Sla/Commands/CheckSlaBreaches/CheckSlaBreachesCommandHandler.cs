@@ -42,16 +42,23 @@ public class CheckSlaBreachesCommandHandler : IRequestHandler<CheckSlaBreachesCo
 
         foreach (var ticket in resolvedTickets)
         {
-            ticket.ChangeStatus(TicketStatus.Closed, "Auto-closed setelah 3 hari tanpa respons.", Guid.Empty, "System", utcNow);
+            try
+            {
+                ticket.ChangeStatus(TicketStatus.Closed, "Auto-closed setelah 3 hari tanpa respons.", null, "System", utcNow);
 
-            await _notificationService.CreateNotificationAsync(
-                ticket.RequesterId,
-                ticket.Id,
-                NotificationType.StatusChanged,
-                $"Tiket {ticket.TicketNo} telah otomatis ditutup setelah 3 hari tanpa respons.",
-                cancellationToken);
+                await _notificationService.CreateNotificationAsync(
+                    ticket.RequesterId,
+                    ticket.Id,
+                    NotificationType.StatusChanged,
+                    $"Tiket {ticket.TicketNo} telah otomatis ditutup setelah 3 hari tanpa respons.",
+                    cancellationToken);
 
-            autoClosedCount++;
+                autoClosedCount++;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Gagal memproses auto-close untuk tiket {TicketNo}.", ticket.TicketNo);
+            }
         }
 
         // 2. Query active tickets (Open, InProgress, Pending) with their relationships
@@ -63,92 +70,99 @@ public class CheckSlaBreachesCommandHandler : IRequestHandler<CheckSlaBreachesCo
 
         foreach (var ticket in activeTickets)
         {
-            // A. Check Response SLA Breach (FR-22, AC-04)
-            // now > ResponseDueAt and FirstRespondedAt is empty
-            if (ticket.FirstRespondedAt == null && utcNow > ticket.ResponseDueAt)
+            try
             {
-                var alreadyEscalatedLevel1 = ticket.Escalations.Any(e =>
-                    e.Level == 1 && e.Reason == EscalationReason.SlaResponseBreach);
-
-                // FR-24: Idempotency check
-                if (!alreadyEscalatedLevel1)
+                // A. Check Response SLA Breach (FR-22, AC-04)
+                // now > ResponseDueAt and FirstRespondedAt is empty
+                if (ticket.FirstRespondedAt == null && utcNow > ticket.ResponseDueAt)
                 {
-                    var level1Supervisor = await GetLevel1SupervisorAsync(ticket, cancellationToken);
-                    if (level1Supervisor != null)
+                    var alreadyEscalatedLevel1 = ticket.Escalations.Any(e =>
+                        e.Level == 1 && e.Reason == EscalationReason.SlaResponseBreach);
+
+                    // FR-24: Idempotency check
+                    if (!alreadyEscalatedLevel1)
                     {
-                        var escalation = new Escalation
+                        var level1Supervisor = await GetLevel1SupervisorAsync(ticket, cancellationToken);
+                        if (level1Supervisor != null)
                         {
-                            TicketId = ticket.Id,
-                            Level = 1,
-                            Reason = EscalationReason.SlaResponseBreach,
-                            EscalatedToId = level1Supervisor.Id,
-                            EscalatedById = null,
-                            EscalatedAt = utcNow
-                        };
+                            var escalation = new Escalation
+                            {
+                                TicketId = ticket.Id,
+                                Level = 1,
+                                Reason = EscalationReason.SlaResponseBreach,
+                                EscalatedToId = level1Supervisor.Id,
+                                EscalatedById = null,
+                                EscalatedAt = utcNow
+                            };
 
-                        ticket.Escalations.Add(escalation);
-                        ticket.EscalationLevel = Math.Max(ticket.EscalationLevel, (byte)1);
+                            ticket.Escalations.Add(escalation);
+                            ticket.EscalationLevel = Math.Max(ticket.EscalationLevel, (byte)1);
 
-                        await _notificationService.CreateNotificationAsync(
-                            level1Supervisor.Id,
-                            ticket.Id,
-                            NotificationType.Escalation,
-                            $"Eskalasi Level 1: Tiket {ticket.TicketNo} belum direspons dalam batas waktu SLA.",
-                            cancellationToken);
+                            await _notificationService.CreateNotificationAsync(
+                                level1Supervisor.Id,
+                                ticket.Id,
+                                NotificationType.Escalation,
+                                $"Eskalasi Level 1: Tiket {ticket.TicketNo} belum direspons dalam batas waktu SLA.",
+                                cancellationToken);
 
-                        responseBreachesCount++;
+                            responseBreachesCount++;
+                        }
+                        else
+                        {
+                            _logger.LogWarning("Penerima eskalasi Level 1 untuk tiket {TicketNo} tidak ditemukan.", ticket.TicketNo);
+                        }
                     }
-                    else
+                }
+
+                // B. Check Resolution SLA Breach (FR-23, FR-27)
+                // FR-27: Selama status Pending, waktu SLA resolusi tidak berjalan (tiket Pending tidak dihitung)
+                if (ticket.Status != TicketStatus.Pending && utcNow > ticket.ResolutionDueAt)
+                {
+                    ticket.IsSlaBreached = true;
+
+                    var alreadyEscalatedLevel2 = ticket.Escalations.Any(e =>
+                        e.Level == 2 && e.Reason == EscalationReason.SlaResolutionBreach);
+
+                    // FR-24: Idempotency check
+                    if (!alreadyEscalatedLevel2)
                     {
-                        _logger.LogWarning("Penerima eskalasi Level 1 untuk tiket {TicketNo} tidak ditemukan.", ticket.TicketNo);
+                        var level1Supervisor = await GetLevel1SupervisorAsync(ticket, cancellationToken);
+                        var level2Supervisor = await GetLevel2SupervisorAsync(level1Supervisor, cancellationToken);
+
+                        if (level2Supervisor != null)
+                        {
+                            var escalation = new Escalation
+                            {
+                                TicketId = ticket.Id,
+                                Level = 2,
+                                Reason = EscalationReason.SlaResolutionBreach,
+                                EscalatedToId = level2Supervisor.Id,
+                                EscalatedById = null,
+                                EscalatedAt = utcNow
+                            };
+
+                            ticket.Escalations.Add(escalation);
+                            ticket.EscalationLevel = Math.Max(ticket.EscalationLevel, (byte)2);
+
+                            await _notificationService.CreateNotificationAsync(
+                                level2Supervisor.Id,
+                                ticket.Id,
+                                NotificationType.Escalation,
+                                $"Eskalasi Level 2: Tiket {ticket.TicketNo} belum diselesaikan dalam batas waktu SLA.",
+                                cancellationToken);
+
+                            resolutionBreachesCount++;
+                        }
+                        else
+                        {
+                            _logger.LogWarning("Penerima eskalasi Level 2 untuk tiket {TicketNo} tidak ditemukan.", ticket.TicketNo);
+                        }
                     }
                 }
             }
-
-            // B. Check Resolution SLA Breach (FR-23, FR-27)
-            // FR-27: Selama status Pending, waktu SLA resolusi tidak berjalan (tiket Pending tidak dihitung)
-            if (ticket.Status != TicketStatus.Pending && utcNow > ticket.ResolutionDueAt)
+            catch (Exception ex)
             {
-                ticket.IsSlaBreached = true;
-
-                var alreadyEscalatedLevel2 = ticket.Escalations.Any(e =>
-                    e.Level == 2 && e.Reason == EscalationReason.SlaResolutionBreach);
-
-                // FR-24: Idempotency check
-                if (!alreadyEscalatedLevel2)
-                {
-                    var level1Supervisor = await GetLevel1SupervisorAsync(ticket, cancellationToken);
-                    var level2Supervisor = await GetLevel2SupervisorAsync(level1Supervisor, cancellationToken);
-
-                    if (level2Supervisor != null)
-                    {
-                        var escalation = new Escalation
-                        {
-                            TicketId = ticket.Id,
-                            Level = 2,
-                            Reason = EscalationReason.SlaResolutionBreach,
-                            EscalatedToId = level2Supervisor.Id,
-                            EscalatedById = null,
-                            EscalatedAt = utcNow
-                        };
-
-                        ticket.Escalations.Add(escalation);
-                        ticket.EscalationLevel = Math.Max(ticket.EscalationLevel, (byte)2);
-
-                        await _notificationService.CreateNotificationAsync(
-                            level2Supervisor.Id,
-                            ticket.Id,
-                            NotificationType.Escalation,
-                            $"Eskalasi Level 2: Tiket {ticket.TicketNo} belum diselesaikan dalam batas waktu SLA.",
-                            cancellationToken);
-
-                        resolutionBreachesCount++;
-                    }
-                    else
-                    {
-                        _logger.LogWarning("Penerima eskalasi Level 2 untuk tiket {TicketNo} tidak ditemukan.", ticket.TicketNo);
-                    }
-                }
+                _logger.LogError(ex, "Gagal memproses pemeriksaan SLA untuk tiket {TicketNo}.", ticket.TicketNo);
             }
         }
 

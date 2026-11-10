@@ -336,5 +336,113 @@ public class CheckSlaBreachesCommandHandlerTests
         result.ResponseBreachesCount.Should().Be(0);
         ticket.Escalations.Should().BeEmpty(); // No exception, logged warning
     }
+
+    [Fact]
+    public async Task Handle_AutoCloseWithoutCurrentUser_ShouldSucceedAndRecordHistoryWithNullChangedById()
+    {
+        // Arrange: Resolved ticket older than 3 days executed by background job (no user)
+        var ticket = CreateTicket(
+            1,
+            status: TicketStatus.Resolved,
+            resolvedAt: _utcNow.AddDays(-4));
+
+        var ticketsSet = new List<Ticket> { ticket }.AsTestDbSet();
+        var usersSet = CreateSampleUsers().AsTestDbSet();
+        _context.Tickets.Returns(ticketsSet);
+        _context.Users.Returns(usersSet);
+
+        var command = new CheckSlaBreachesCommand();
+
+        // Act
+        var result = await _handler.Handle(command, CancellationToken.None);
+
+        // Assert
+        result.AutoClosedCount.Should().Be(1);
+        ticket.Status.Should().Be(TicketStatus.Closed);
+        ticket.ClosedAt.Should().Be(_utcNow);
+        ticket.Histories.Should().ContainSingle(h =>
+            h.FieldName == "Status" &&
+            h.NewValue == "Closed" &&
+            h.ChangedById == null);
+    }
+
+    [Fact]
+    public async Task Handle_WhenOneTicketFailsDuringAutoClose_ShouldLogErrorAndContinueProcessingRemainingTickets()
+    {
+        // Arrange: 2 resolved tickets older than 3 days.
+        var ticket1 = CreateTicket(1, status: TicketStatus.Resolved, resolvedAt: _utcNow.AddDays(-4));
+        var ticket2 = CreateTicket(2, status: TicketStatus.Resolved, resolvedAt: _utcNow.AddDays(-4));
+
+        var ticketsSet = new List<Ticket> { ticket1, ticket2 }.AsTestDbSet();
+        var usersSet = CreateSampleUsers().AsTestDbSet();
+        _context.Tickets.Returns(ticketsSet);
+        _context.Users.Returns(usersSet);
+
+        // Make ticket1 fail when notification is created
+        _notificationService.CreateNotificationAsync(
+            ticket1.RequesterId,
+            ticket1.Id,
+            NotificationType.StatusChanged,
+            Arg.Any<string>(),
+            Arg.Any<CancellationToken>())
+            .Returns<Task>(_ => throw new InvalidOperationException("Simulated notification failure"));
+
+        var command = new CheckSlaBreachesCommand();
+
+        // Act
+        var result = await _handler.Handle(command, CancellationToken.None);
+
+        // Assert: Ticket 2 still auto-closed despite ticket 1 failing
+        result.AutoClosedCount.Should().Be(1);
+        ticket2.Status.Should().Be(TicketStatus.Closed);
+        ticket2.Histories.Should().ContainSingle(h => h.FieldName == "Status" && h.NewValue == "Closed" && h.ChangedById == null);
+
+        // Ticket 1 error logged with TicketNo
+        _logger.Received(1).Log(
+            LogLevel.Error,
+            Arg.Any<EventId>(),
+            Arg.Is<object>(o => o.ToString()!.Contains(ticket1.TicketNo)),
+            Arg.Any<Exception>(),
+            Arg.Any<Func<object, Exception?, string>>());
+    }
+
+    [Fact]
+    public async Task Handle_WhenOneTicketFailsDuringSlaCheck_ShouldLogErrorAndContinueProcessingRemainingTickets()
+    {
+        // Arrange: 2 active tickets with response SLA breached.
+        var ticket1 = CreateTicket(1, responseDueAt: _utcNow.AddMinutes(-10), firstRespondedAt: null);
+        var ticket2 = CreateTicket(2, responseDueAt: _utcNow.AddMinutes(-10), firstRespondedAt: null);
+
+        var ticketsSet = new List<Ticket> { ticket1, ticket2 }.AsTestDbSet();
+        var usersSet = CreateSampleUsers().AsTestDbSet();
+        _context.Tickets.Returns(ticketsSet);
+        _context.Users.Returns(usersSet);
+
+        // Make ticket1 fail when notification is created for escalation
+        _notificationService.CreateNotificationAsync(
+            _sup2Id,
+            ticket1.Id,
+            NotificationType.Escalation,
+            Arg.Any<string>(),
+            Arg.Any<CancellationToken>())
+            .Returns<Task>(_ => throw new InvalidOperationException("Simulated escalation notification failure"));
+
+        var command = new CheckSlaBreachesCommand();
+
+        // Act
+        var result = await _handler.Handle(command, CancellationToken.None);
+
+        // Assert: Ticket 2 still escalated despite ticket 1 failing
+        result.ResponseBreachesCount.Should().Be(1);
+        ticket2.Escalations.Should().ContainSingle(e => e.Level == 1);
+
+        // Ticket 1 error logged with TicketNo
+        _logger.Received(1).Log(
+            LogLevel.Error,
+            Arg.Any<EventId>(),
+            Arg.Is<object>(o => o.ToString()!.Contains(ticket1.TicketNo)),
+            Arg.Any<Exception>(),
+            Arg.Any<Func<object, Exception?, string>>());
+    }
 }
 

@@ -80,8 +80,6 @@ public class ChangeTicketStatusCommandHandler : IRequestHandler<ChangeTicketStat
 
         ticket.ChangeStatus(request.Status, request.Reason, currentUserId, userRole, utcNow, adjustedResolutionDueAt, workingPausedMinutes);
 
-        await _context.SaveChangesAsync(cancellationToken);
-
         // FR-28: Notifikasi status tiket saya berubah
         if (currentUserId != ticket.RequesterId)
         {
@@ -102,6 +100,8 @@ public class ChangeTicketStatusCommandHandler : IRequestHandler<ChangeTicketStat
                 $"Status tiket {ticket.TicketNo} telah diubah menjadi {ticket.Status}.",
                 cancellationToken);
         }
+
+        await _context.SaveChangesAsync(cancellationToken);
 
         return new TicketDetailDto
         {

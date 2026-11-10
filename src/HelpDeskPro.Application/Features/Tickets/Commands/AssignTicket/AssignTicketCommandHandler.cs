@@ -70,8 +70,6 @@ public class AssignTicketCommandHandler : IRequestHandler<AssignTicketCommand, T
         var utcNow = _dateTimeProvider.UtcNow;
         ticket.Assign(assignee, currentUserId, userRole, utcNow);
 
-        await _context.SaveChangesAsync(cancellationToken);
-
         // FR-28: Notifikasi tiket di-assign ke saya
         if (assignee.Id != currentUserId)
         {
@@ -82,6 +80,8 @@ public class AssignTicketCommandHandler : IRequestHandler<AssignTicketCommand, T
                 $"Tiket {ticket.TicketNo} telah ditugaskan kepada Anda.",
                 cancellationToken);
         }
+
+        await _context.SaveChangesAsync(cancellationToken);
 
         return new TicketDetailDto
         {

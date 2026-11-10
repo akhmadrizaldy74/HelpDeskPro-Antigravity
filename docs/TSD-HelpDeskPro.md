@@ -214,7 +214,7 @@ erDiagram
         nvarchar(100) FieldName
         nvarchar(4000) OldValue
         nvarchar(4000) NewValue
-        uniqueidentifier ChangedById FK
+        uniqueidentifier ChangedById FK "nullable, null=System"
         datetime2 ChangedAt
     }
 

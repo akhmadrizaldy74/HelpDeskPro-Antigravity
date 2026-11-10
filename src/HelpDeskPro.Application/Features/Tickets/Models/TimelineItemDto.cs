@@ -10,7 +10,7 @@ public class TimelineItemDto
 {
     public TimelineItemType Type { get; set; }
     public DateTime Timestamp { get; set; }
-    public Guid AuthorId { get; set; }
+    public Guid? AuthorId { get; set; }
     public string AuthorName { get; set; } = string.Empty;
     public string? CommentBody { get; set; }
     public bool IsInternal { get; set; }

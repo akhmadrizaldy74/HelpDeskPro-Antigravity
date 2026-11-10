@@ -17,7 +17,7 @@ public class NotificationService : INotificationService
         _dateTimeProvider = dateTimeProvider;
     }
 
-    public async Task CreateNotificationAsync(
+    public Task CreateNotificationAsync(
         Guid userId,
         long? ticketId,
         NotificationType type,
@@ -35,7 +35,7 @@ public class NotificationService : INotificationService
         };
 
         _context.Notifications.Add(notification);
-        await _context.SaveChangesAsync(cancellationToken);
+        return Task.CompletedTask;
     }
 }
 

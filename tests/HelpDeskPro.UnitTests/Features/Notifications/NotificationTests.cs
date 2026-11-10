@@ -98,5 +98,32 @@ public class NotificationTests
         notif3.IsRead.Should().BeTrue();
         await _context.Received(1).SaveChangesAsync(Arg.Any<CancellationToken>());
     }
+
+    [Fact]
+    public async Task NotificationService_CreateNotificationAsync_ShouldAddEntityAndNotCallSaveChanges()
+    {
+        // Arrange
+        var context = Substitute.For<IApplicationDbContext>();
+        var dateTimeProvider = Substitute.For<IDateTimeProvider>();
+        dateTimeProvider.UtcNow.Returns(_utcNow);
+
+        var notificationsSet = new List<Notification>().AsTestDbSet();
+        context.Notifications.Returns(notificationsSet);
+
+        var service = new HelpDeskPro.Infrastructure.Services.NotificationService(context, dateTimeProvider);
+
+        // Act
+        await service.CreateNotificationAsync(_userId, 100, NotificationType.TicketAssigned, "Pesan Uji");
+
+        // Assert
+        context.Notifications.Received(1).Add(Arg.Is<Notification>(n =>
+            n.UserId == _userId &&
+            n.TicketId == 100 &&
+            n.Type == NotificationType.TicketAssigned &&
+            n.Message == "Pesan Uji" &&
+            !n.IsRead));
+
+        await context.DidNotReceive().SaveChangesAsync(Arg.Any<CancellationToken>());
+    }
 }
 

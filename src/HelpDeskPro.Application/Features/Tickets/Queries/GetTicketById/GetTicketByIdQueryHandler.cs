@@ -111,7 +111,7 @@ public class GetTicketByIdQueryHandler : IRequestHandler<GetTicketByIdQuery, Tic
             Type = TimelineItemType.History,
             Timestamp = h.ChangedAt,
             AuthorId = h.ChangedById,
-            AuthorName = h.ChangedBy?.FullName ?? string.Empty,
+            AuthorName = h.ChangedBy?.FullName ?? "Sistem",
             FieldName = h.FieldName,
             OldValue = h.OldValue,
             NewValue = h.NewValue
