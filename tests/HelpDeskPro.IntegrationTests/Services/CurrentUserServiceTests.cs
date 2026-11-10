@@ -79,3 +79,4 @@ public class CurrentUserServiceTests
         service.IsAuthenticated.Should().BeTrue();
     }
 }
+
