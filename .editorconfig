@@ -61,13 +61,16 @@ dotnet_naming_style.pascal_case_style.capitalization = pascal_case
 # Code Analysis Rules
 # CA1848: Allow standard structured logger.LogInformation(...) per coding-standard.md Section 7
 dotnet_diagnostic.CA1848.severity = none
+# CA1873: Allow evaluating properties in standard structured logging per coding-standard.md Section 7
+dotnet_diagnostic.CA1873.severity = none
 # CA1707: Allow underscores in test names per coding-standard.md Section 8 (MethodName_Scenario_ExpectedResult)
 dotnet_diagnostic.CA1707.severity = none
 # CA1861: Allow inline constant array in EF Core generated migrations
 dotnet_diagnostic.CA1861.severity = none
 
-[*/Migrations/**]
+[**/Migrations/**]
 generated_code = true
+dotnet_diagnostic.IDE0161.severity = none
 
 
 

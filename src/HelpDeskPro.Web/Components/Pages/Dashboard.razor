@@ -104,7 +104,7 @@
             <div class="chart-container">
                 <MudChart ChartType="ChartType.Bar" 
                           ChartSeries="@_chartSeries" 
-                          XAxisLabels="@_chartLabels" 
+                          ChartLabels="@_chartLabels" 
                           Width="100%" 
                           Height="220px" 
                           ChartOptions="@_chartOptions" />
@@ -267,13 +267,11 @@
     private List<AgentWorkloadDto> _agentWorkload = GetFallbackWorkload();
     private List<PendingEscalationDto> _pendingEscalations = GetFallbackEscalations();
 
-    private List<ChartSeries> _chartSeries = new();
+    private List<ChartSeries<double>> _chartSeries = new();
     private string[] _chartLabels = Array.Empty<string>();
     private ChartOptions _chartOptions = new()
     {
-        ChartPalette = new[] { "#98A2B3", "#1F4E79" },
-        YAxisLines = true,
-        XAxisLines = false
+        ChartPalette = new[] { "#98A2B3", "#1F4E79" }
     };
 
     protected override async Task OnInitializedAsync()
@@ -364,10 +362,10 @@
         }
 
         _chartLabels = labels;
-        _chartSeries = new List<ChartSeries>
+        _chartSeries = new List<ChartSeries<double>>
         {
-            new ChartSeries { Name = "Tiket masuk", Data = incoming },
-            new ChartSeries { Name = "Tiket selesai", Data = resolved }
+            new ChartSeries<double> { Name = "Tiket masuk", Data = incoming },
+            new ChartSeries<double> { Name = "Tiket selesai", Data = resolved }
         };
     }
 

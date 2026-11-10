@@ -49,7 +49,7 @@ namespace HelpDeskPro.Web.Components.Admin;
 
 @code {
     [CascadingParameter]
-    private MudDialogInstance MudDialog { get; set; } = default!;
+    private IMudDialogInstance MudDialog { get; set; } = default!;
 
     [Parameter]
     public CategoryDto? Category { get; set; }

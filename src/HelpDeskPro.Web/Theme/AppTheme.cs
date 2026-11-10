@@ -62,42 +62,42 @@ public static class AppTheme
         },
         Typography = new Typography
         {
-            Default = new()
+            Default = new DefaultTypography
             {
                 FontFamily = ["IBM Plex Sans", "-apple-system", "BlinkMacSystemFont", "Segoe UI", "Roboto", "sans-serif"],
                 FontSize = "14px",
-                LineHeight = 1.5
+                LineHeight = "1.5"
             },
-            H6 = new()
+            H6 = new H6Typography
             {
                 FontFamily = ["IBM Plex Sans", "sans-serif"],
                 FontSize = "20px",
-                FontWeight = 600,
-                LineHeight = 1.3
+                FontWeight = "600",
+                LineHeight = "1.3"
             },
-            Body1 = new()
+            Body1 = new Body1Typography
             {
                 FontFamily = ["IBM Plex Sans", "sans-serif"],
                 FontSize = "14px",
-                LineHeight = 1.5
+                LineHeight = "1.5"
             },
-            Body2 = new()
+            Body2 = new Body2Typography
             {
                 FontFamily = ["IBM Plex Sans", "sans-serif"],
                 FontSize = "13px",
-                LineHeight = 1.4
+                LineHeight = "1.4"
             },
-            Caption = new()
+            Caption = new CaptionTypography
             {
                 FontFamily = ["IBM Plex Sans", "sans-serif"],
                 FontSize = "12px",
-                LineHeight = 1.3
+                LineHeight = "1.3"
             },
-            Button = new()
+            Button = new ButtonTypography
             {
                 FontFamily = ["IBM Plex Sans", "sans-serif"],
                 FontSize = "14px",
-                FontWeight = 500,
+                FontWeight = "500",
                 TextTransform = "none"
             }
         },

@@ -21,19 +21,25 @@ public class LoggingBehavior<TRequest, TResponse> : IPipelineBehavior<TRequest, 
     {
         var requestName = typeof(TRequest).Name;
 
-        _logger.LogInformation("Handling {RequestName}", requestName);
+        if (_logger.IsEnabled(LogLevel.Information))
+        {
+            _logger.LogInformation("Handling {RequestName}", requestName);
+        }
 
         var stopwatch = Stopwatch.StartNew();
 
         try
         {
-            var response = await next();
+            var response = await next(cancellationToken);
             stopwatch.Stop();
 
-            _logger.LogInformation(
-                "Handled {RequestName} in {ElapsedMilliseconds} ms",
-                requestName,
-                stopwatch.ElapsedMilliseconds);
+            if (_logger.IsEnabled(LogLevel.Information))
+            {
+                _logger.LogInformation(
+                    "Handled {RequestName} in {ElapsedMilliseconds} ms",
+                    requestName,
+                    stopwatch.ElapsedMilliseconds);
+            }
 
             return response;
         }

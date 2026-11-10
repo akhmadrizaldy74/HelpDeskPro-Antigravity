@@ -10,7 +10,7 @@
 <MudSnackbarProvider />
 
 <AuthorizeView>
-    <Authorized>
+    <Authorized Context="authContext">
         <MudLayout>
             <!-- Top App Bar (Thin, Surface White, Border Bottom) -->
             <MudAppBar Elevation="0" Dense="true" Class="top-app-bar">
@@ -117,11 +117,11 @@
                     <ActivatorContent>
                         <div class="user-profile-btn">
                             <MudAvatar Color="Color.Primary" Size="Size.Small" Class="mr-2">
-                                @GetUserInitials(context.User.Identity?.Name)
+                                @GetUserInitials(authContext.User.Identity?.Name)
                             </MudAvatar>
                             <div class="user-info">
-                                <span class="user-name">@(context.User.Identity?.Name ?? "Pengguna")</span>
-                                <span class="user-role">@GetUserRole(context.User)</span>
+                                <span class="user-name">@(authContext.User.Identity?.Name ?? "Pengguna")</span>
+                                <span class="user-role">@GetUserRole(authContext.User)</span>
                             </div>
                             <MudIcon Icon="@Icons.Material.Filled.ArrowDropDown" Size="Size.Small" Class="ml-1 text-secondary" />
                         </div>
@@ -129,7 +129,7 @@
                     <ChildContent>
                         <MudMenuItem Disabled="true">
                             <MudText Typo="Typo.caption" Color="Color.Secondary">
-                                Departemen: @(context.User.FindFirst("departmentName")?.Value ?? "Umum")
+                                Departemen: @(authContext.User.FindFirst("departmentName")?.Value ?? "Umum")
                             </MudText>
                         </MudMenuItem>
                         <MudDivider Class="my-1" />
@@ -160,7 +160,7 @@
                     </MudNavLink>
 
                     @* 2. Semua Tiket (Agent, Supervisor, Admin) *@
-                    @if (IsAgentOrAbove(context.User))
+                    @if (IsAgentOrAbove(authContext.User))
                     {
                         <MudNavLink Href="/tickets" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Outlined.ConfirmationNumber">
                             Semua tiket
@@ -168,7 +168,7 @@
                     }
 
                     @* 3. Dashboard (Supervisor, Admin) *@
-                    @if (IsSupervisorOrAbove(context.User))
+                    @if (IsSupervisorOrAbove(authContext.User))
                     {
                         <MudNavLink Href="/dashboard" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Outlined.Dashboard">
                             Dashboard
@@ -180,7 +180,7 @@
                     }
 
                     @* 4. Master Data (Admin Only) *@
-                    @if (IsAdmin(context.User))
+                    @if (IsAdmin(authContext.User))
                     {
                         <MudNavGroup Title="Master data" Icon="@Icons.Material.Outlined.AdminPanelSettings" Expanded="false">
                             <MudNavLink Href="/admin/departments">Departemen</MudNavLink>

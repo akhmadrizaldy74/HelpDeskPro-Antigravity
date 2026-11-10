@@ -400,8 +400,8 @@
     private string _currentUserId = string.Empty;
 
     // Filters
-    private IEnumerable<TicketStatus> _selectedStatuses = new HashSet<TicketStatus>();
-    private IEnumerable<TicketPriority> _selectedPriorities = new HashSet<TicketPriority>();
+    private IReadOnlyCollection<TicketStatus> _selectedStatuses = new HashSet<TicketStatus>();
+    private IReadOnlyCollection<TicketPriority> _selectedPriorities = new HashSet<TicketPriority>();
     private int? _selectedCategoryId;
     private Guid? _selectedAssigneeId;
     private bool _unassignedOnly;
@@ -788,14 +788,14 @@
         await LoadTicketsAsync();
     }
 
-    private async Task OnStatusesChanged(IEnumerable<TicketStatus> values)
+    private async Task OnStatusesChanged(IReadOnlyCollection<TicketStatus> values)
     {
         _selectedStatuses = values;
         _currentPage = 1;
         await LoadTicketsAsync();
     }
 
-    private async Task OnPrioritiesChanged(IEnumerable<TicketPriority> values)
+    private async Task OnPrioritiesChanged(IReadOnlyCollection<TicketPriority> values)
     {
         _selectedPriorities = values;
         _currentPage = 1;

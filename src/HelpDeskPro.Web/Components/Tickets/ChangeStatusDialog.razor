@@ -146,7 +146,7 @@
 </style>
 
 @code {
-    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
 
     [Parameter] public long TicketId { get; set; }
     [Parameter] public TicketStatus CurrentStatus { get; set; }
