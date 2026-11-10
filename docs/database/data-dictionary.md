@@ -145,6 +145,12 @@ erDiagram
         int Year PK "Calendar year (e.g. 2026)"
         int LastNumber "Last generated sequence number for the year"
     }
+
+    Holidays {
+        int Id PK
+        date Date UK "Holiday date"
+        nvarchar(100) Name "Holiday name"
+    }
 ```
 
 ---
@@ -342,6 +348,20 @@ Menjamin nomor tiket unik format tahunan bebas race condition.
 
 ---
 
+### 2.12 `Holidays`
+Menyimpan daftar tanggal hari libur nasional yang dikecualikan dari jam kerja perhitungan target SLA (CR-002: Senin–Jumat 08.00–17.00 WIB).
+
+| Kolom | Tipe Data | Nullable | Default | Keterangan & Constraint |
+|---|---|:---:|---|---|
+| `Id` | `int` | Tidak | IDENTITY(1,1) | Primary Key |
+| `Date` | `date` | Tidak | - | Tanggal libur nasional (Unique Index: `IX_Holidays_Date`) |
+| `Name` | `nvarchar(100)` | Tidak | - | Nama hari libur nasional |
+
+**Index Khusus pada `Holidays`:**
+- `IX_Holidays_Date`: `CREATE UNIQUE INDEX IX_Holidays_Date ON Holidays (Date)`
+
+---
+
 ## 3. Changelog Skema Basis Data
 
 | Tanggal | ID Perubahan / Migration | Tabel Terkait | Deskripsi Perubahan |
@@ -349,5 +369,6 @@ Menjamin nomor tiket unik format tahunan bebas race condition.
 | **09/11/2026** | `20261109154702_InitialCreate` | Seluruh Tabel | Skema awal basis data HelpDeskPro (11 tabel) |
 | **09/11/2026** | `20261109174605_AddIsActiveToUsers` | `Users` | Penambahan kolom `IsActive` (bit, default 1) pada tabel `Users` |
 | **10/11/2026** | `20261110163426_AddTicketRating` | `Tickets` | **CR-001:** Penambahan kolom `Rating` (int, nullable), `RatingComment` (nvarchar(500), nullable), dan `RatedAt` (datetime2, nullable) pada tabel `Tickets` |
+| **10/11/2026** | `20261110164950_AddHolidaysTable` | `Holidays` | **CR-002:** Penambahan tabel baru `Holidays` (Id, Date, Name) dengan unique index pada kolom Date untuk pengecualian jam kerja perhitungan SLA |
 
 

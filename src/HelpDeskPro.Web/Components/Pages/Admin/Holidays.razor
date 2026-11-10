@@ -1,0 +1,193 @@
+@page "/admin/holidays"
+@page "/master/holidays"
+@using System.Globalization
+@inject IApiClient ApiClient
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Hari Libur Nasional — HelpDeskPro</PageTitle>
+
+<div class="admin-page">
+    <div class="d-flex justify-space-between align-center mb-4">
+        <div>
+            <h1 class="page-main-heading">Hari libur nasional</h1>
+            <p class="page-subheading">Kelola tanggal libur nasional yang dikecualikan dari jam kerja perhitungan SLA (08.00–17.00 WIB)</p>
+        </div>
+        <div class="d-flex align-center gap-3">
+            <MudSelect T="int?" Label="Tahun" Value="_selectedYear" ValueChanged="OnYearChanged" Dense="true" Margin="Margin.Dense" Style="width: 140px;">
+                <MudSelectItem T="int?" Value="@((int?)null)">Semua tahun</MudSelectItem>
+                <MudSelectItem T="int?" Value="@(DateTime.Today.Year - 1)">@(DateTime.Today.Year - 1)</MudSelectItem>
+                <MudSelectItem T="int?" Value="@(DateTime.Today.Year)">@(DateTime.Today.Year)</MudSelectItem>
+                <MudSelectItem T="int?" Value="@(DateTime.Today.Year + 1)">@(DateTime.Today.Year + 1)</MudSelectItem>
+            </MudSelect>
+            <MudButton Variant="Variant.Filled" 
+                       Color="Color.Primary" 
+                       StartIcon="@Icons.Material.Filled.Add" 
+                       OnClick="@OpenCreateDialog"
+                       Size="Size.Small">
+                Tambah hari libur
+            </MudButton>
+        </div>
+    </div>
+
+    @if (_isLoading && _holidays.Count == 0)
+    {
+        <div class="dashboard-panel">
+            <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="40px" Class="mb-2" />
+            <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="40px" Class="mb-2" />
+            <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="40px" />
+        </div>
+    }
+    else if (_holidays.Count == 0)
+    {
+        <div class="dashboard-panel text-center py-8">
+            <MudIcon Icon="@Icons.Material.Outlined.EventBusy" Style="font-size: 48px; color: #9E9E9E;" Class="mb-2" />
+            <MudText Typo="Typo.h6" Style="color: #616161;">Belum ada hari libur nasional</MudText>
+            <MudText Typo="Typo.body2" Style="color: #9E9E9E;" Class="mb-4">
+                @(_selectedYear.HasValue ? $"Tidak ada hari libur terdaftar untuk tahun {_selectedYear.Value}." : "Tambahkan hari libur nasional untuk mengecualikan dari perhitungan SLA.")
+            </MudText>
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="@OpenCreateDialog" Size="Size.Small">
+                Tambah hari libur sekarang
+            </MudButton>
+        </div>
+    }
+    else
+    {
+        <div class="dashboard-panel">
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 140px;">Tanggal</th>
+                            <th style="width: 160px;">Hari</th>
+                            <th>Nama hari libur</th>
+                            <th style="width: 140px;" class="text-right">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var h in _holidays)
+                        {
+                            var dt = h.Date.ToDateTime(TimeOnly.MinValue);
+                            var dayName = _cultureId.DateTimeFormat.GetDayName(dt.DayOfWeek);
+                            <tr>
+                                <td class="font-mono font-weight-semibold">@h.Date.ToString("dd/MM/yyyy")</td>
+                                <td style="text-transform: capitalize;">@dayName</td>
+                                <td class="font-weight-medium">@h.Name</td>
+                                <td class="text-right">
+                                    <div class="d-flex justify-end gap-1">
+                                        <button type="button" 
+                                                class="btn-action-text" 
+                                                @onclick="@(() => OpenEditDialog(h))"
+                                                title="Ubah hari libur">
+                                            Ubah
+                                        </button>
+                                        <button type="button" 
+                                                class="btn-action-text text-danger" 
+                                                @onclick="@(() => DeleteHoliday(h))"
+                                                title="Hapus hari libur">
+                                            Hapus
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private readonly CultureInfo _cultureId = new("id-ID");
+    private bool _isLoading = false;
+    private int? _selectedYear = DateTime.Today.Year;
+    private List<HolidayDto> _holidays = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadHolidays();
+    }
+
+    private async Task OnYearChanged(int? newYear)
+    {
+        _selectedYear = newYear;
+        await LoadHolidays();
+    }
+
+    private async Task LoadHolidays()
+    {
+        _isLoading = true;
+        try
+        {
+            var res = await ApiClient.GetHolidaysAsync(_selectedYear);
+            if (res?.Success == true && res.Data != null)
+            {
+                _holidays = res.Data.ToList();
+            }
+            else
+            {
+                _holidays = new List<HolidayDto>();
+            }
+        }
+        catch
+        {
+            _holidays = new List<HolidayDto>();
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task OpenCreateDialog()
+    {
+        var parameters = new DialogParameters<HolidayFormDialog>();
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.ExtraSmall, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<HolidayFormDialog>("Tambah hari libur", parameters, options);
+        var result = await dialog.Result;
+        if (result != null && !result.Canceled)
+        {
+            await LoadHolidays();
+        }
+    }
+
+    private async Task OpenEditDialog(HolidayDto holiday)
+    {
+        var parameters = new DialogParameters<HolidayFormDialog> { { x => x.Holiday, holiday } };
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.ExtraSmall, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<HolidayFormDialog>("Ubah hari libur", parameters, options);
+        var result = await dialog.Result;
+        if (result != null && !result.Canceled)
+        {
+            await LoadHolidays();
+        }
+    }
+
+    private async Task DeleteHoliday(HolidayDto holiday)
+    {
+        var parameters = new DialogParameters<HelpDeskPro.Web.Components.Common.ConfirmDialog>
+        {
+            { x => x.Title, "Hapus Hari Libur" },
+            { x => x.Message, $"Apakah Anda yakin ingin menghapus hari libur '{holiday.Name}' ({holiday.Date:dd/MM/yyyy})?" },
+            { x => x.ConfirmText, "Hapus" },
+            { x => x.Color, Color.Error }
+        };
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.ExtraSmall };
+        var dialog = await DialogService.ShowAsync<HelpDeskPro.Web.Components.Common.ConfirmDialog>("Hapus Hari Libur", parameters, options);
+        var result = await dialog.Result;
+        if (result != null && !result.Canceled)
+        {
+            var deleteRes = await ApiClient.DeleteHolidayAsync(holiday.Id);
+            if (deleteRes?.Success == true)
+            {
+                Snackbar.Add("Hari libur berhasil dihapus.", Severity.Success);
+                await LoadHolidays();
+            }
+            else
+            {
+                Snackbar.Add(deleteRes?.Errors is { Count: > 0 } ? string.Join("; ", deleteRes.Errors) : "Gagal menghapus hari libur.", Severity.Error);
+            }
+        }
+    }
+}

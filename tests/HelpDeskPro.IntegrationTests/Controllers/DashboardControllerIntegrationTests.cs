@@ -105,6 +105,9 @@ public class DashboardControllerIntegrationTests : IClassFixture<WebApplicationF
                 var escalationSet = new List<Escalation>().AsTestDbSet();
                 contextMock.Escalations.Returns(escalationSet);
 
+                var holidaysSet = new List<Holiday>().AsTestDbSet();
+                contextMock.Holidays.Returns(holidaysSet);
+
                 contextMock.SaveChangesAsync(Arg.Any<CancellationToken>()).Returns(1);
 
                 services.AddScoped(_ => contextMock);

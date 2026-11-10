@@ -16,6 +16,7 @@ public class CreateTicketCommandHandlerTests
     private readonly ITicketNumberGenerator _generator;
     private readonly ICurrentUserService _currentUserService;
     private readonly IDateTimeProvider _dateTimeProvider;
+    private readonly ISlaCalculator _slaCalculator;
     private readonly CreateTicketCommandHandler _handler;
 
     private readonly Guid _userId = Guid.NewGuid();
@@ -27,16 +28,27 @@ public class CreateTicketCommandHandlerTests
         _generator = Substitute.For<ITicketNumberGenerator>();
         _currentUserService = Substitute.For<ICurrentUserService>();
         _dateTimeProvider = Substitute.For<IDateTimeProvider>();
+        _slaCalculator = Substitute.For<ISlaCalculator>();
 
         _dateTimeProvider.UtcNow.Returns(_utcNow);
         _currentUserService.UserId.Returns(_userId.ToString());
         _currentUserService.UserName.Returns("requester@helpdeskpro.local");
 
+        _slaCalculator.CalculateDueDatesAsync(Arg.Any<DateTime>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                var dt = callInfo.ArgAt<DateTime>(0);
+                var resp = callInfo.ArgAt<int>(1);
+                var res = callInfo.ArgAt<int>(2);
+                return Task.FromResult((dt.AddMinutes(resp), dt.AddMinutes(res)));
+            });
+
         _handler = new CreateTicketCommandHandler(
             _context,
             _generator,
             _currentUserService,
-            _dateTimeProvider);
+            _dateTimeProvider,
+            _slaCalculator);
     }
 
     [Fact]

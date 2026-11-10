@@ -32,6 +32,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Guid
     public DbSet<Escalation> Escalations => Set<Escalation>();
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<TicketNumberSequence> TicketNumberSequences => Set<TicketNumberSequence>();
+    public DbSet<Holiday> Holidays => Set<Holiday>();
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {

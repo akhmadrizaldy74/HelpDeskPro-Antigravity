@@ -1,0 +1,143 @@
+namespace HelpDeskPro.Web.Components.Admin;
+
+@inject ISnackbar Snackbar
+@inject IApiClient ApiClient
+
+<MudDialog>
+    <DialogContent>
+        <div class="dialog-form-body">
+            <MudText Typo="Typo.h6" Class="dialog-title mb-4">
+                @(Holiday == null ? "Tambah hari libur nasional" : "Ubah hari libur nasional")
+            </MudText>
+
+            @if (!string.IsNullOrWhiteSpace(_errorMessage))
+            {
+                <MudAlert Severity="Severity.Error" Dense="true" Class="mb-3" ShowCloseIcon="true" CloseIconClicked="@(() => _errorMessage = null)">
+                    @_errorMessage
+                </MudAlert>
+            }
+
+            <MudDatePicker Label="Tanggal libur" 
+                           @bind-Date="_date" 
+                           Required="true" 
+                           RequiredError="Tanggal libur wajib diisi."
+                           DateFormat="dd/MM/yyyy"
+                           Class="mb-3" 
+                           Disabled="@_isSaving" />
+
+            <MudTextField T="string" 
+                          Label="Nama hari libur" 
+                          @bind-Value="_name" 
+                          Required="true" 
+                          RequiredError="Nama hari libur wajib diisi."
+                          MaxLength="100" 
+                          Immediate="true"
+                          HelperText="Contoh: Tahun Baru Imlek, Hari Kemerdekaan RI"
+                          Class="mb-2" 
+                          Disabled="@_isSaving" />
+        </div>
+    </DialogContent>
+    <DialogActions>
+        <MudButton Variant="Variant.Outlined" Color="Color.Default" OnClick="Cancel" Disabled="@_isSaving" Size="Size.Small">
+            Batal
+        </MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Submit" Disabled="@_isSaving" Size="Size.Small">
+            @if (_isSaving)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                <span>Menyimpan...</span>
+            }
+            else
+            {
+                <span>Simpan</span>
+            }
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private MudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter]
+    public HolidayDto? Holiday { get; set; }
+
+    private DateTime? _date;
+    private string _name = string.Empty;
+    private bool _isSaving = false;
+    private string? _errorMessage;
+
+    protected override void OnInitialized()
+    {
+        if (Holiday != null)
+        {
+            _date = Holiday.Date.ToDateTime(TimeOnly.MinValue);
+            _name = Holiday.Name;
+        }
+        else
+        {
+            _date = DateTime.Today;
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private async Task Submit()
+    {
+        _errorMessage = null;
+
+        if (!_date.HasValue)
+        {
+            _errorMessage = "Tanggal libur wajib diisi.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_name) || _name.Trim().Length < 2)
+        {
+            _errorMessage = "Nama hari libur minimal 2 karakter.";
+            return;
+        }
+
+        _isSaving = true;
+        try
+        {
+            var dateOnly = DateOnly.FromDateTime(_date.Value);
+            if (Holiday == null)
+            {
+                var cmd = new CreateHolidayCommand(dateOnly, _name.Trim());
+                var res = await ApiClient.CreateHolidayAsync(cmd);
+                if (res != null && res.Success)
+                {
+                    Snackbar.Add($"Hari libur '{res.Data?.Name}' berhasil ditambahkan.", Severity.Success);
+                    MudDialog.Close(DialogResult.Ok(true));
+                }
+                else
+                {
+                    _errorMessage = res?.Errors is { Count: > 0 } ? string.Join("; ", res.Errors) : "Gagal menambahkan hari libur.";
+                }
+            }
+            else
+            {
+                var cmd = new UpdateHolidayCommand(Holiday.Id, dateOnly, _name.Trim());
+                var res = await ApiClient.UpdateHolidayAsync(Holiday.Id, cmd);
+                if (res != null && res.Success)
+                {
+                    Snackbar.Add($"Hari libur '{res.Data?.Name}' berhasil diperbarui.", Severity.Success);
+                    MudDialog.Close(DialogResult.Ok(true));
+                }
+                else
+                {
+                    _errorMessage = res?.Errors is { Count: > 0 } ? string.Join("; ", res.Errors) : "Gagal memperbarui hari libur.";
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ex.Message;
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+}

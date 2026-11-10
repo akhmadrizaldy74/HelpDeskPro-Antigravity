@@ -59,7 +59,9 @@ public class Ticket : AuditableEntity<long>
         Guid requesterId,
         SlaPolicy slaPolicy,
         DateTime utcNow,
-        string? createdBy = null)
+        string? createdBy = null,
+        DateTime? responseDueAt = null,
+        DateTime? resolutionDueAt = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(ticketNo);
         ArgumentException.ThrowIfNullOrWhiteSpace(title);
@@ -76,8 +78,8 @@ public class Ticket : AuditableEntity<long>
             RequesterId = requesterId,
             SlaPolicyId = slaPolicy.Id,
             SlaPolicy = slaPolicy,
-            ResponseDueAt = utcNow.AddMinutes(slaPolicy.ResponseTimeMinutes),
-            ResolutionDueAt = utcNow.AddMinutes(slaPolicy.ResolutionTimeMinutes),
+            ResponseDueAt = responseDueAt ?? utcNow.AddMinutes(slaPolicy.ResponseTimeMinutes),
+            ResolutionDueAt = resolutionDueAt ?? utcNow.AddMinutes(slaPolicy.ResolutionTimeMinutes),
             FirstRespondedAt = null,
             ResolvedAt = null,
             ClosedAt = null,
@@ -106,7 +108,9 @@ public class Ticket : AuditableEntity<long>
         string? reason,
         Guid changedById,
         string userRole,
-        DateTime utcNow)
+        DateTime utcNow,
+        DateTime? adjustedResolutionDueAt = null,
+        int? workingPausedMinutes = null)
     {
         // 1. Check if transition is in the allowed transition table
         if (!_allowedTransitions.TryGetValue(Status, out var targetStatuses) || !targetStatuses.Contains(newStatus))
@@ -172,11 +176,11 @@ public class Ticket : AuditableEntity<long>
         {
             if (PausedAt.HasValue)
             {
-                var pausedMinutes = (int)Math.Round((utcNow - PausedAt.Value).TotalMinutes);
+                var pausedMinutes = workingPausedMinutes ?? (int)Math.Round((utcNow - PausedAt.Value).TotalMinutes);
                 if (pausedMinutes > 0)
                 {
                     TotalPausedMinutes += pausedMinutes;
-                    ResolutionDueAt = ResolutionDueAt.AddMinutes(pausedMinutes);
+                    ResolutionDueAt = adjustedResolutionDueAt ?? ResolutionDueAt.AddMinutes(pausedMinutes);
                 }
                 PausedAt = null;
             }

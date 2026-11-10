@@ -13,17 +13,20 @@ public class CreateTicketCommandHandler : IRequestHandler<CreateTicketCommand, T
     private readonly ITicketNumberGenerator _ticketNumberGenerator;
     private readonly ICurrentUserService _currentUserService;
     private readonly IDateTimeProvider _dateTimeProvider;
+    private readonly ISlaCalculator _slaCalculator;
 
     public CreateTicketCommandHandler(
         IApplicationDbContext context,
         ITicketNumberGenerator ticketNumberGenerator,
         ICurrentUserService currentUserService,
-        IDateTimeProvider dateTimeProvider)
+        IDateTimeProvider dateTimeProvider,
+        ISlaCalculator slaCalculator)
     {
         _context = context;
         _ticketNumberGenerator = ticketNumberGenerator;
         _currentUserService = currentUserService;
         _dateTimeProvider = dateTimeProvider;
+        _slaCalculator = slaCalculator;
     }
 
     public async Task<TicketDetailDto> Handle(CreateTicketCommand request, CancellationToken cancellationToken)
@@ -60,6 +63,13 @@ public class CreateTicketCommandHandler : IRequestHandler<CreateTicketCommand, T
         }
 
         var ticketNo = await _ticketNumberGenerator.GenerateTicketNumberAsync(cancellationToken);
+        var utcNow = _dateTimeProvider.UtcNow;
+
+        var (responseDueAt, resolutionDueAt) = await _slaCalculator.CalculateDueDatesAsync(
+            utcNow,
+            slaPolicy.ResponseTimeMinutes,
+            slaPolicy.ResolutionTimeMinutes,
+            cancellationToken);
 
         var ticket = Ticket.Create(
             ticketNo,
@@ -69,8 +79,10 @@ public class CreateTicketCommandHandler : IRequestHandler<CreateTicketCommand, T
             request.Priority,
             requesterId,
             slaPolicy,
-            _dateTimeProvider.UtcNow,
-            _currentUserService.UserName ?? requesterName ?? requesterId.ToString());
+            utcNow,
+            _currentUserService.UserName ?? requesterName ?? requesterId.ToString(),
+            responseDueAt,
+            resolutionDueAt);
 
         _context.Tickets.Add(ticket);
         await _context.SaveChangesAsync(cancellationToken);

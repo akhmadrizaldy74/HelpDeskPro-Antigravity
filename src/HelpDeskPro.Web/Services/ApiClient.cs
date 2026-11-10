@@ -13,6 +13,9 @@ using HelpDeskPro.Application.Features.Master.Categories.Models;
 using HelpDeskPro.Application.Features.Master.Departments.Commands.CreateDepartment;
 using HelpDeskPro.Application.Features.Master.Departments.Commands.UpdateDepartment;
 using HelpDeskPro.Application.Features.Master.Departments.Models;
+using HelpDeskPro.Application.Features.Master.Holidays.Commands.CreateHoliday;
+using HelpDeskPro.Application.Features.Master.Holidays.Commands.UpdateHoliday;
+using HelpDeskPro.Application.Features.Master.Holidays.Models;
 using HelpDeskPro.Application.Features.Master.SlaPolicies.Models;
 using HelpDeskPro.Application.Features.Master.Users.Commands.CreateUser;
 using HelpDeskPro.Application.Features.Master.Users.Commands.UpdateUser;
@@ -556,6 +559,56 @@ public class ApiClient : IApiClient
         }
 
         return await response.Content.ReadFromJsonAsync<ApiResponse<SlaPolicyDto>>(_jsonOptions, cancellationToken);
+    }
+
+    // Master Holidays
+    public async Task<ApiResponse<IReadOnlyList<HolidayDto>>?> GetHolidaysAsync(int? year = null, CancellationToken cancellationToken = default)
+    {
+        var url = year.HasValue ? $"api/master/holidays?year={year.Value}" : "api/master/holidays";
+        var response = await _httpClient.GetAsync(url, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var error = await ExtractErrorMessageAsync(response, cancellationToken);
+            return ApiResponse.Failure<IReadOnlyList<HolidayDto>>(error);
+        }
+
+        return await response.Content.ReadFromJsonAsync<ApiResponse<IReadOnlyList<HolidayDto>>>(_jsonOptions, cancellationToken);
+    }
+
+    public async Task<ApiResponse<HolidayDto>?> CreateHolidayAsync(CreateHolidayCommand command, CancellationToken cancellationToken = default)
+    {
+        var response = await _httpClient.PostAsJsonAsync("api/master/holidays", command, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var error = await ExtractErrorMessageAsync(response, cancellationToken);
+            return ApiResponse.Failure<HolidayDto>(error);
+        }
+
+        return await response.Content.ReadFromJsonAsync<ApiResponse<HolidayDto>>(_jsonOptions, cancellationToken);
+    }
+
+    public async Task<ApiResponse<HolidayDto>?> UpdateHolidayAsync(int id, UpdateHolidayCommand command, CancellationToken cancellationToken = default)
+    {
+        var response = await _httpClient.PutAsJsonAsync($"api/master/holidays/{id}", command, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var error = await ExtractErrorMessageAsync(response, cancellationToken);
+            return ApiResponse.Failure<HolidayDto>(error);
+        }
+
+        return await response.Content.ReadFromJsonAsync<ApiResponse<HolidayDto>>(_jsonOptions, cancellationToken);
+    }
+
+    public async Task<ApiResponse<string>?> DeleteHolidayAsync(int id, CancellationToken cancellationToken = default)
+    {
+        var response = await _httpClient.DeleteAsync($"api/master/holidays/{id}", cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var error = await ExtractErrorMessageAsync(response, cancellationToken);
+            return ApiResponse.Failure<string>(error);
+        }
+
+        return await response.Content.ReadFromJsonAsync<ApiResponse<string>>(_jsonOptions, cancellationToken);
     }
 
     private static async Task<string> ExtractErrorMessageAsync(HttpResponseMessage response, CancellationToken cancellationToken)

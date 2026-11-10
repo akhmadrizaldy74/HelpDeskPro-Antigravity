@@ -14,6 +14,9 @@ using HelpDeskPro.Application.Features.Master.Categories.Commands.CreateCategory
 using HelpDeskPro.Application.Features.Master.Categories.Models;
 using HelpDeskPro.Application.Features.Master.Departments.Commands.CreateDepartment;
 using HelpDeskPro.Application.Features.Master.Departments.Models;
+using HelpDeskPro.Application.Features.Master.Holidays.Commands.CreateHoliday;
+using HelpDeskPro.Application.Features.Master.Holidays.Commands.UpdateHoliday;
+using HelpDeskPro.Application.Features.Master.Holidays.Models;
 using HelpDeskPro.Application.Features.Master.SlaPolicies.Models;
 using HelpDeskPro.Application.Features.Master.Users.Models;
 using HelpDeskPro.Domain.Entities;
@@ -109,6 +112,13 @@ public class MasterControllersIntegrationTests : IClassFixture<WebApplicationFac
                 var ticketSet = new List<Ticket>().AsTestDbSet();
                 contextMock.Tickets.Returns(ticketSet);
 
+                var holidays = new List<Holiday>
+                {
+                    new() { Id = 1, Date = new DateOnly(2026, 1, 1), Name = "Tahun Baru Masehi" }
+                };
+                var holidaysSet = holidays.AsTestDbSet();
+                contextMock.Holidays.Returns(holidaysSet);
+
                 contextMock.SaveChangesAsync(Arg.Any<CancellationToken>()).Returns(1);
 
                 services.AddScoped(_ => contextMock);
@@ -144,6 +154,9 @@ public class MasterControllersIntegrationTests : IClassFixture<WebApplicationFac
 
         var slaRes = await client.GetAsync("/api/master/sla-policies");
         slaRes.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+
+        var holidayRes = await client.GetAsync("/api/master/holidays");
+        holidayRes.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
 
     [Fact]
@@ -211,6 +224,32 @@ public class MasterControllersIntegrationTests : IClassFixture<WebApplicationFac
         var putResult = await putRes.Content.ReadFromJsonAsync<ApiResponse<SlaPolicyDto>>();
         putResult!.Data!.ResponseTimeMinutes.Should().Be(60);
         putResult.Data.ResolutionTimeMinutes.Should().Be(300);
+    }
+
+    [Fact]
+    public async Task MasterHolidays_Crud_ReturnsSuccess()
+    {
+        // Arrange
+        var client = CreateClientWithMocks("Admin");
+
+        // Act - Get
+        var getRes = await client.GetAsync("/api/master/holidays?year=2026");
+        getRes.StatusCode.Should().Be(HttpStatusCode.OK);
+        var getResult = await getRes.Content.ReadFromJsonAsync<ApiResponse<IReadOnlyList<HolidayDto>>>();
+        getResult!.Data.Should().NotBeNull();
+        getResult.Data.Should().HaveCount(1);
+
+        // Act - Post
+        var postRes = await client.PostAsJsonAsync("/api/master/holidays", new CreateHolidayCommand(new DateOnly(2026, 8, 17), "Hari Kemerdekaan"));
+        postRes.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        // Act - Put
+        var putRes = await client.PutAsJsonAsync("/api/master/holidays/1", new UpdateHolidayCommand(1, new DateOnly(2026, 1, 1), "Tahun Baru Masehi 2026"));
+        putRes.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        // Act - Delete
+        var delRes = await client.DeleteAsync("/api/master/holidays/1");
+        delRes.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 }
 

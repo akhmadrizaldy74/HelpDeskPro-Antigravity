@@ -13,17 +13,20 @@ public class ChangeTicketStatusCommandHandler : IRequestHandler<ChangeTicketStat
     private readonly ICurrentUserService _currentUserService;
     private readonly IDateTimeProvider _dateTimeProvider;
     private readonly INotificationService _notificationService;
+    private readonly ISlaCalculator _slaCalculator;
 
     public ChangeTicketStatusCommandHandler(
         IApplicationDbContext context,
         ICurrentUserService currentUserService,
         IDateTimeProvider dateTimeProvider,
-        INotificationService notificationService)
+        INotificationService notificationService,
+        ISlaCalculator slaCalculator)
     {
         _context = context;
         _currentUserService = currentUserService;
         _dateTimeProvider = dateTimeProvider;
         _notificationService = notificationService;
+        _slaCalculator = slaCalculator;
     }
 
     public async Task<TicketDetailDto> Handle(ChangeTicketStatusCommand request, CancellationToken cancellationToken)
@@ -61,7 +64,21 @@ public class ChangeTicketStatusCommandHandler : IRequestHandler<ChangeTicketStat
         }
 
         var utcNow = _dateTimeProvider.UtcNow;
-        ticket.ChangeStatus(request.Status, request.Reason, currentUserId, userRole, utcNow);
+        DateTime? adjustedResolutionDueAt = null;
+        int? workingPausedMinutes = null;
+
+        if (ticket.Status == Domain.Enums.TicketStatus.Pending && request.Status != Domain.Enums.TicketStatus.Pending && ticket.PausedAt.HasValue)
+        {
+            var adjustment = await _slaCalculator.AdjustDueDatesForPausedDurationAsync(
+                ticket.ResolutionDueAt,
+                ticket.PausedAt.Value,
+                utcNow,
+                cancellationToken);
+            adjustedResolutionDueAt = adjustment.NewResolutionDueAt;
+            workingPausedMinutes = adjustment.WorkingPausedMinutes;
+        }
+
+        ticket.ChangeStatus(request.Status, request.Reason, currentUserId, userRole, utcNow, adjustedResolutionDueAt, workingPausedMinutes);
 
         await _context.SaveChangesAsync(cancellationToken);
 

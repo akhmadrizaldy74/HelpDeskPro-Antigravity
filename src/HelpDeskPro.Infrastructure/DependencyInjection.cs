@@ -25,6 +25,8 @@ public static class DependencyInjection
         services.AddScoped<ITicketNumberGenerator, TicketNumberGenerator>();
         services.AddScoped<IFileStorage, LocalFileStorage>();
         services.AddScoped<INotificationService, NotificationService>();
+        services.AddScoped<IBusinessCalendar, BusinessCalendar>();
+        services.AddScoped<ISlaCalculator, BusinessHoursSlaCalculator>();
         services.AddHostedService<SlaMonitorService>();
 
         var connectionString = configuration.GetConnectionString("DefaultConnection");

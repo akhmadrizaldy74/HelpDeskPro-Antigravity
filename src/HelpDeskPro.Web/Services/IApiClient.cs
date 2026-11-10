@@ -10,6 +10,9 @@ using HelpDeskPro.Application.Features.Master.Categories.Models;
 using HelpDeskPro.Application.Features.Master.Departments.Commands.CreateDepartment;
 using HelpDeskPro.Application.Features.Master.Departments.Commands.UpdateDepartment;
 using HelpDeskPro.Application.Features.Master.Departments.Models;
+using HelpDeskPro.Application.Features.Master.Holidays.Commands.CreateHoliday;
+using HelpDeskPro.Application.Features.Master.Holidays.Commands.UpdateHoliday;
+using HelpDeskPro.Application.Features.Master.Holidays.Models;
 using HelpDeskPro.Application.Features.Master.SlaPolicies.Models;
 using HelpDeskPro.Application.Features.Master.Users.Commands.CreateUser;
 using HelpDeskPro.Application.Features.Master.Users.Commands.UpdateUser;
@@ -74,4 +77,10 @@ public interface IApiClient
     // Master SLA Policies
     Task<ApiResponse<IReadOnlyList<SlaPolicyDto>>?> GetSlaPoliciesAsync(CancellationToken cancellationToken = default);
     Task<ApiResponse<SlaPolicyDto>?> UpdateSlaPolicyAsync(TicketPriority priority, int responseTimeMinutes, int resolutionTimeMinutes, CancellationToken cancellationToken = default);
+
+    // Master Holidays
+    Task<ApiResponse<IReadOnlyList<HolidayDto>>?> GetHolidaysAsync(int? year = null, CancellationToken cancellationToken = default);
+    Task<ApiResponse<HolidayDto>?> CreateHolidayAsync(CreateHolidayCommand command, CancellationToken cancellationToken = default);
+    Task<ApiResponse<HolidayDto>?> UpdateHolidayAsync(int id, UpdateHolidayCommand command, CancellationToken cancellationToken = default);
+    Task<ApiResponse<string>?> DeleteHolidayAsync(int id, CancellationToken cancellationToken = default);
 }

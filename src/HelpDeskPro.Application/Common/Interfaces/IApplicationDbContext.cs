@@ -16,6 +16,7 @@ public interface IApplicationDbContext
     DbSet<Escalation> Escalations { get; }
     DbSet<Notification> Notifications { get; }
     DbSet<TicketNumberSequence> TicketNumberSequences { get; }
+    DbSet<Holiday> Holidays { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

@@ -17,6 +17,7 @@ public class ChangeTicketStatusCommandHandlerTests
     private readonly ICurrentUserService _currentUserService;
     private readonly IDateTimeProvider _dateTimeProvider;
     private readonly INotificationService _notificationService;
+    private readonly ISlaCalculator _slaCalculator;
     private readonly ChangeTicketStatusCommandHandler _handler;
 
     private readonly Guid _agentId = Guid.NewGuid();
@@ -30,16 +31,28 @@ public class ChangeTicketStatusCommandHandlerTests
         _currentUserService = Substitute.For<ICurrentUserService>();
         _dateTimeProvider = Substitute.For<IDateTimeProvider>();
         _notificationService = Substitute.For<INotificationService>();
+        _slaCalculator = Substitute.For<ISlaCalculator>();
 
         _dateTimeProvider.UtcNow.Returns(_utcNow);
         _currentUserService.UserId.Returns(_agentId.ToString());
         _currentUserService.Role.Returns("Agent");
 
+        _slaCalculator.AdjustDueDatesForPausedDurationAsync(Arg.Any<DateTime>(), Arg.Any<DateTime>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                var cur = callInfo.ArgAt<DateTime>(0);
+                var paused = callInfo.ArgAt<DateTime>(1);
+                var resumed = callInfo.ArgAt<DateTime>(2);
+                var pausedMins = (int)Math.Round((resumed - paused).TotalMinutes);
+                return Task.FromResult((cur.AddMinutes(pausedMins), pausedMins));
+            });
+
         _handler = new ChangeTicketStatusCommandHandler(
             _context,
             _currentUserService,
             _dateTimeProvider,
-            _notificationService);
+            _notificationService,
+            _slaCalculator);
     }
 
     private Ticket CreateSampleTicket(long id = 1, TicketStatus status = TicketStatus.InProgress)

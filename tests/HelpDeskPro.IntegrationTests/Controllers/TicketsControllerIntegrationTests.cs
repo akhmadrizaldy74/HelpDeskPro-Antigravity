@@ -141,6 +141,9 @@ public class TicketsControllerIntegrationTests : IClassFixture<WebApplicationFac
                 var notificationsSet = notifications.AsTestDbSet();
                 contextMock.Notifications.Returns(notificationsSet);
 
+                var holidaysSet = new List<Holiday>().AsTestDbSet();
+                contextMock.Holidays.Returns(holidaysSet);
+
                 contextMock.SaveChangesAsync(Arg.Any<CancellationToken>()).Returns(1);
 
                 services.AddScoped<IApplicationDbContext>(_ => contextMock);
@@ -204,10 +207,14 @@ public class TicketsControllerIntegrationTests : IClassFixture<WebApplicationFac
         ticket.Status.Should().Be(TicketStatus.Open);
         ticket.Priority.Should().Be(TicketPriority.High);
 
-        ticket.ResponseDueAt.Should().BeOnOrAfter(beforeTime.AddMinutes(120))
-                                    .And.BeOnOrBefore(DateTime.UtcNow.AddMinutes(120));
-        ticket.ResolutionDueAt.Should().BeOnOrAfter(beforeTime.AddMinutes(480))
-                                      .And.BeOnOrBefore(DateTime.UtcNow.AddMinutes(480));
+        var calendar = new BusinessCalendar(Substitute.For<IApplicationDbContext>());
+        var calc = new BusinessHoursSlaCalculator(calendar);
+        var (expectedResponse, expectedResolution) = calc.CalculateDueDates(beforeTime, 120, 480);
+
+        ticket.ResponseDueAt.Should().BeOnOrAfter(expectedResponse.AddMinutes(-5))
+                                    .And.BeOnOrBefore(expectedResponse.AddMinutes(5));
+        ticket.ResolutionDueAt.Should().BeOnOrAfter(expectedResolution.AddMinutes(-5))
+                                      .And.BeOnOrBefore(expectedResolution.AddMinutes(5));
     }
 
     [Fact]

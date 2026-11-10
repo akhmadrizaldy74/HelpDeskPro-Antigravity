@@ -187,6 +187,7 @@
                             <MudNavLink Href="/admin/categories">Kategori</MudNavLink>
                             <MudNavLink Href="/admin/users">Pengguna</MudNavLink>
                             <MudNavLink Href="/admin/sla">Kebijakan SLA</MudNavLink>
+                            <MudNavLink Href="/admin/holidays">Hari libur</MudNavLink>
                         </MudNavGroup>
                     }
                 </MudNavMenu>
@@ -252,6 +253,7 @@
         if (uri.StartsWith("admin/categories") || uri.StartsWith("master/categories")) return "Master kategori";
         if (uri.StartsWith("admin/users") || uri.StartsWith("master/users")) return "Master pengguna";
         if (uri.StartsWith("admin/sla") || uri.StartsWith("master/sla-policies")) return "Kebijakan SLA";
+        if (uri.StartsWith("admin/holidays") || uri.StartsWith("master/holidays")) return "Hari libur nasional";
         if (uri.StartsWith("tickets/new")) return "Buat tiket baru";
         if (uri.StartsWith("tickets")) return "Daftar tiket";
         return "HelpDeskPro";
