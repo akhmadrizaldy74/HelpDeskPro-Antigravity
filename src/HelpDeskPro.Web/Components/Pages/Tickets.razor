@@ -43,7 +43,7 @@
                            Margin="Margin.Dense" 
                            Variant="Variant.Outlined"
                            Class="filter-select"
-                           MultiSelectionTextFunc="@(new Func<List<string>, string>(GetMultiStatusText))">
+                           MultiSelectionTextFunc="@(new Func<IReadOnlyList<string>, string>(GetMultiStatusText))">
                     @foreach (TicketStatus status in Enum.GetValues<TicketStatus>())
                     {
                         <MudSelectItem Value="@status">@GetStatusLabel(status)</MudSelectItem>
@@ -66,7 +66,7 @@
                            Margin="Margin.Dense" 
                            Variant="Variant.Outlined"
                            Class="filter-select"
-                           MultiSelectionTextFunc="@(new Func<List<string>, string>(GetMultiPriorityText))">
+                           MultiSelectionTextFunc="@(new Func<IReadOnlyList<string>, string>(GetMultiPriorityText))">
                     @foreach (TicketPriority priority in Enum.GetValues<TicketPriority>())
                     {
                         <MudSelectItem Value="@priority">@GetPriorityLabel(priority)</MudSelectItem>
@@ -895,14 +895,14 @@
         return $"{start}–{end}";
     }
 
-    private string GetMultiStatusText(List<string> selected)
+    private string GetMultiStatusText(IReadOnlyList<string> selected)
     {
         if (selected == null || selected.Count == 0) return "Semua status";
         if (selected.Count == Enum.GetValues<TicketStatus>().Length) return "Semua status";
         return $"{selected.Count} status";
     }
 
-    private string GetMultiPriorityText(List<string> selected)
+    private string GetMultiPriorityText(IReadOnlyList<string> selected)
     {
         if (selected == null || selected.Count == 0) return "Semua prioritas";
         if (selected.Count == Enum.GetValues<TicketPriority>().Length) return "Semua prioritas";
