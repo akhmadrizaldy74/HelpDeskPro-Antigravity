@@ -15,8 +15,11 @@ public class HolidayConfiguration : IEntityTypeConfiguration<Holiday>
         builder.Property(h => h.Date)
             .IsRequired();
 
+        // Unik hanya untuk data yang belum dihapus (soft delete), agar tanggal
+        // hari libur yang pernah dihapus dapat didaftarkan kembali.
         builder.HasIndex(h => h.Date)
-            .IsUnique();
+            .IsUnique()
+            .HasFilter("[IsDeleted] = 0");
 
         builder.Property(h => h.Name)
             .HasMaxLength(100)

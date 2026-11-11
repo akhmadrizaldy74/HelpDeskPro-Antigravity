@@ -30,7 +30,7 @@ HelpDeskPro/
 
 - [.NET 8.0 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) atau lebih baru
 - [Docker](https://www.docker.com/) & Docker Compose
-- [dotnet-ef CLI tool](https://learn.microsoft.com/ef/core/cli/dotnet) (opsional untuk migration): `dotnet tool install --global dotnet-ef`
+- [dotnet-ef CLI tool](https://learn.microsoft.com/ef/core/cli/dotnet) (opsional untuk migration): `dotnet tool restore` (versi 8.0.11 sesuai `.config/dotnet-tools.json`)
 
 ---
 
@@ -47,9 +47,9 @@ Jalankan container SQL Server 2022 di background:
 ```bash
 docker compose up -d
 ```
-Container SQL Server akan aktif di port `1433`.
+Container SQL Server akan aktif di port `1433`. Password SA pada `.env.example` (`HelpDesk#2026`) sama dengan connection string default di `appsettings.json`; jika Anda menggantinya, ubah juga connection string (langkah 2).
 
-### 2. Konfigurasi User Secrets (API)
+### 2. Konfigurasi User Secrets (API) — opsional
 
 Sesuai aturan keamanan di `.agent/rules/coding-standard.md`, credential dan string koneksi database lokal tidak disimpan di `appsettings.json`, melainkan menggunakan .NET User Secrets:
 
@@ -58,7 +58,7 @@ Sesuai aturan keamanan di `.agent/rules/coding-standard.md`, credential dan stri
 dotnet user-secrets init --project src/HelpDeskPro.Api
 
 # Set connection string database lokal
-dotnet user-secrets set "ConnectionStrings:DefaultConnection" "Server=localhost,1433;Database=HelpDeskProDb;User Id=sa;Password=YourStrong@Passw0rd!;TrustServerCertificate=True;" --project src/HelpDeskPro.Api
+dotnet user-secrets set "ConnectionStrings:DefaultConnection" "Server=localhost,1433;Database=HelpDeskProDb;User Id=sa;Password=HelpDesk#2026;TrustServerCertificate=True;" --project src/HelpDeskPro.Api
 ```
 
 ### 3. Jalankan Database Migration
@@ -76,13 +76,22 @@ Jalankan API dan Web Blazor di dua terminal terpisah:
 ```bash
 dotnet run --project src/HelpDeskPro.Api
 ```
-Swagger UI tersedia di `https://localhost:7087/swagger` (atau port HTTPS yang dialokasikan).
+Swagger UI tersedia di `http://localhost:5017/swagger`. Pada environment Development, migration dan seeding data dijalankan otomatis saat API start.
 
 **Terminal 2 — Frontend Web (Blazor Interactive Server):**
 ```bash
 dotnet run --project src/HelpDeskPro.Web
 ```
-Aplikasi Web dapat diakses di browser melalui URL yang ditampilkan (contoh: `https://localhost:7214`).
+Aplikasi Web dapat diakses di `http://localhost:5015`. Web memanggil API melalui `ApiSettings:BaseUrl` (default `http://localhost:5017`), jadi pastikan API sudah berjalan.
+
+Akun hasil seeding (password: `Dev@Passw0rd123!`):
+
+| Role | Email |
+|------|-------|
+| Admin | `admin@helpdeskpro.local` |
+| Supervisor | `supervisor.it@helpdeskpro.local` |
+| Agent | `agent.agus@helpdeskpro.local` |
+| Requester | `requester.bambang@helpdeskpro.local` |
 
 ---
 

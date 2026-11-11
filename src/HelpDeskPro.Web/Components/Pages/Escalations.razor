@@ -1,4 +1,5 @@
 @page "/escalations"
+@attribute [Authorize(Roles = "Supervisor,Admin")]
 @inject IApiClient ApiClient
 @inject ISnackbar Snackbar
 @inject NavigationManager Navigation
@@ -123,7 +124,7 @@
 
 @code {
     private bool _isLoading = false;
-    private List<PendingEscalationDto> _escalations = GetFallbackEscalations();
+    private List<PendingEscalationDto> _escalations = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -136,18 +137,20 @@
         try
         {
             var res = await ApiClient.GetPendingEscalationsAsync();
-            if (res?.Success == true && res.Data != null && res.Data.Count > 0)
+            if (res?.Success == true && res.Data != null)
             {
                 _escalations = res.Data.ToList();
             }
             else
             {
-                _escalations = GetFallbackEscalations();
+                _escalations = new();
+                Snackbar.Add(res?.Errors.FirstOrDefault() ?? "Gagal memuat data dari server.", Severity.Error);
             }
         }
-        catch
+        catch (HttpRequestException)
         {
-            _escalations = GetFallbackEscalations();
+            _escalations = new();
+            Snackbar.Add("Tidak dapat terhubung ke server API.", Severity.Error);
         }
         finally
         {
@@ -167,14 +170,12 @@
             }
             else
             {
-                _escalations.Remove(esc);
-                Snackbar.Add($"Eskalasi tiket {esc.TicketNo} telah ditandai ditindaklanjuti.", Severity.Success);
+                Snackbar.Add(res?.Errors.FirstOrDefault() ?? "Gagal menandai eskalasi.", Severity.Error);
             }
         }
-        catch
+        catch (HttpRequestException)
         {
-            _escalations.Remove(esc);
-            Snackbar.Add($"Eskalasi tiket {esc.TicketNo} telah ditandai ditindaklanjuti.", Severity.Success);
+            Snackbar.Add("Tidak dapat terhubung ke server API.", Severity.Error);
         }
     }
 
@@ -199,9 +200,4 @@
         _ => "Eskalasi"
     };
 
-    private static List<PendingEscalationDto> GetFallbackEscalations() => new()
-    {
-        new(1, 1, "HD-2026-000001", "Printer lantai 3 paper jam terus", TicketPriority.High, 1, EscalationReason.SlaResolutionBreach, "Roller karet penarik kertas aus, perlu suku cadang.", DateTime.UtcNow.AddHours(-2), "Budi Santoso", "Agus Pratama"),
-        new(2, 4, "HD-2026-000004", "VPN kantor pusat putus-putus saat WFH", TicketPriority.Critical, 2, EscalationReason.SlaResponseBreach, "Kendala koneksi berulang dari penyedia jaringan ISP.", DateTime.UtcNow.AddHours(-4), "Budi Santoso", "Dewi Lestari")
-    };
 }

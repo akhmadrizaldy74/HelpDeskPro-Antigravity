@@ -108,6 +108,7 @@ public class CreateTicketCommandHandler : IRequestHandler<CreateTicketCommand, T
             ClosedAt = ticket.ClosedAt,
             IsSlaBreached = ticket.IsSlaBreached,
             EscalationLevel = ticket.EscalationLevel,
+            RowVersion = ticket.RowVersion,
             CreatedAt = ticket.CreatedAt,
             CreatedBy = ticket.CreatedBy
         };

@@ -11,14 +11,22 @@
     <link href="_content/MudBlazor/MudBlazor.min.css" rel="stylesheet" />
     <link rel="stylesheet" href="app.css" />
     <link rel="stylesheet" href="HelpDeskPro.Web.styles.css" />
-    <HeadOutlet @rendermode="InteractiveServer" />
+    <HeadOutlet @rendermode="RenderModeServer" />
 </head>
 
 <body>
-    <Routes @rendermode="InteractiveServer" />
+    <Routes @rendermode="RenderModeServer" />
     <script src="_framework/blazor.web.js"></script>
     <script src="_content/MudBlazor/MudBlazor.min.js"></script>
     <script src="js/shortcuts.js"></script>
+    <script src="js/download.js"></script>
 </body>
 
 </html>
+
+@code {
+    // Prerender dimatikan: token JWT tersimpan di localStorage dan hanya dapat dibaca
+    // setelah koneksi interaktif (JS interop) tersedia. Tanpa ini, setiap muat ulang
+    // halaman akan dianggap anonim lalu dialihkan ke /login.
+    private static readonly IComponentRenderMode RenderModeServer = new InteractiveServerRenderMode(prerender: false);
+}

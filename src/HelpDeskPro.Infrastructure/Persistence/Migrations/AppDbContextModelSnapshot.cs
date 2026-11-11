@@ -252,7 +252,8 @@ namespace HelpDeskPro.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("Date")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasFilter("[IsDeleted] = 0");
 
                     b.ToTable("Holidays", (string)null);
                 });

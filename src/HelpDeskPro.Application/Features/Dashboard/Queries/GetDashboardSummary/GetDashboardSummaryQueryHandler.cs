@@ -75,15 +75,25 @@ public class GetDashboardSummaryQueryHandler : IRequestHandler<GetDashboardSumma
                  t.Status != TicketStatus.Pending &&
                  now > t.ResolutionDueAt), cancellationToken);
 
-        var avgResponse = await baseQuery
+        // Selisih DateTime -> TotalMinutes tidak dapat diterjemahkan ke SQL oleh EF Core,
+        // sehingga hanya kolom yang dibutuhkan diambil lalu rata-rata dihitung di memori.
+        var responseSamples = await baseQuery
             .Where(t => t.FirstRespondedAt != null)
-            .Select(t => (double?)(t.FirstRespondedAt!.Value - t.CreatedAt).TotalMinutes)
-            .AverageAsync(cancellationToken);
+            .Select(t => new { t.CreatedAt, RespondedAt = t.FirstRespondedAt!.Value })
+            .ToListAsync(cancellationToken);
 
-        var avgResolution = await baseQuery
+        var resolutionSamples = await baseQuery
             .Where(t => t.ResolvedAt != null)
-            .Select(t => (double?)((t.ResolvedAt!.Value - t.CreatedAt).TotalMinutes - t.TotalPausedMinutes))
-            .AverageAsync(cancellationToken);
+            .Select(t => new { t.CreatedAt, ResolvedAt = t.ResolvedAt!.Value, t.TotalPausedMinutes })
+            .ToListAsync(cancellationToken);
+
+        double? avgResponse = responseSamples.Count > 0
+            ? responseSamples.Average(x => (x.RespondedAt - x.CreatedAt).TotalMinutes)
+            : null;
+
+        double? avgResolution = resolutionSamples.Count > 0
+            ? resolutionSamples.Average(x => Math.Max(0, (x.ResolvedAt - x.CreatedAt).TotalMinutes - x.TotalPausedMinutes))
+            : null;
 
         return new DashboardSummaryDto(
             request.PeriodDays,

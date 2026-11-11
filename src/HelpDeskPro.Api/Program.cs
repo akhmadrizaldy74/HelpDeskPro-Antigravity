@@ -103,6 +103,10 @@ builder.Services.AddSwaggerGen(options =>
 
 var app = builder.Build();
 
+// Request logging dipasang sebelum exception middleware agar status code yang
+// tercatat adalah status akhir (mis. 400/404/422), bukan 500.
+app.UseSerilogRequestLogging();
+
 app.UseMiddleware<GlobalExceptionMiddleware>();
 
 // Configure the HTTP request pipeline.
@@ -125,9 +129,12 @@ if (app.Environment.IsDevelopment())
     await seeder.SeedAsync();
 }
 
-app.UseSerilogRequestLogging();
-
-app.UseHttpsRedirection();
+// Di Development API dilayani via HTTP (dipanggil oleh HelpDeskPro.Web di http://localhost:5017).
+// Redirect ke HTTPS akan membuat HttpClient membuang header Authorization -> 401.
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHttpsRedirection();
+}
 
 app.UseAuthentication();
 app.UseAuthorization();
