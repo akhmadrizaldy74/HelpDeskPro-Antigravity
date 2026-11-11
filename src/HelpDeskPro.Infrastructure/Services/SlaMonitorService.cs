@@ -41,7 +41,12 @@ public class SlaMonitorService : BackgroundService
                     result.ResolutionBreachesCount,
                     result.AutoClosedCount);
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                // Aplikasi sedang dimatikan: hentikan pemantauan dengan tenang.
+                break;
+            }
+            catch (Exception ex)
             {
                 _logger.LogError(ex, "Error occurred during SLA monitoring execution.");
             }

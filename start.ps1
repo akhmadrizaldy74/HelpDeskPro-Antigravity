@@ -21,11 +21,24 @@ for ($i = 0; $i -lt 60; $i++) {
     Start-Sleep -Seconds 2
 }
 
+function Test-PortInUse([int]$port) {
+    return [bool](Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue)
+}
+
+if (Test-PortInUse 5017) {
+    Write-Host '2/3 API sudah berjalan di port 5017 (dilewati).' -ForegroundColor Yellow
+} else {
 Write-Host '2/3 Menjalankan API  -> http://localhost:5017/swagger' -ForegroundColor Cyan
 Start-Process powershell -ArgumentList '-NoExit', '-Command', "Set-Location '$PSScriptRoot'; `$host.UI.RawUI.WindowTitle='HelpDeskPro API'; dotnet run --project src/HelpDeskPro.Api --launch-profile http"
 
+}
+
+if (Test-PortInUse 5015) {
+    Write-Host '3/3 Web sudah berjalan di port 5015 (dilewati).' -ForegroundColor Yellow
+} else {
 Write-Host '3/3 Menjalankan Web  -> http://localhost:5015' -ForegroundColor Cyan
 Start-Process powershell -ArgumentList '-NoExit', '-Command', "Set-Location '$PSScriptRoot'; `$host.UI.RawUI.WindowTitle='HelpDeskPro Web'; dotnet run --project src/HelpDeskPro.Web --launch-profile http"
+}
 
 Write-Host '    Menunggu aplikasi siap...'
 for ($i = 0; $i -lt 90; $i++) {

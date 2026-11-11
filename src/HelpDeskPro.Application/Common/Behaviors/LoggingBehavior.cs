@@ -43,6 +43,13 @@ public class LoggingBehavior<TRequest, TResponse> : IPipelineBehavior<TRequest, 
 
             return response;
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Request dibatalkan (klien menutup koneksi / aplikasi dimatikan) - bukan error.
+            stopwatch.Stop();
+            _logger.LogInformation("Cancelled {RequestName} after {ElapsedMilliseconds} ms", requestName, stopwatch.ElapsedMilliseconds);
+            throw;
+        }
         catch (Exception ex)
         {
             stopwatch.Stop();
