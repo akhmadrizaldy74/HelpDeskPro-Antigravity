@@ -34,7 +34,28 @@ HelpDeskPro/
 
 ---
 
-## Panduan Menjalankan Lokal
+## Cara Cepat (satu perintah)
+
+Prasyarat: Docker Desktop menyala dan .NET 8 SDK terpasang.
+
+**Windows (PowerShell):**
+```powershell
+.\start.ps1
+```
+Jika diblokir execution policy: `powershell -ExecutionPolicy Bypass -File .\start.ps1`
+
+**Linux / macOS:**
+```bash
+./start.sh
+```
+
+Skrip akan membuat `.env`, menyalakan SQL Server, menjalankan API (migration + seeding otomatis) dan Web, lalu membuka `http://localhost:5015`. Tinggal login dengan akun di bawah (password `Dev@Passw0rd123!`).
+
+Di Swagger (`http://localhost:5017/swagger`), contoh body **POST /api/Auth/login** sudah terisi akun Admin. Cukup klik **Try it out** → **Execute**, token otomatis terpasang di tombol **Authorize** (tetap tersimpan saat refresh), dan endpoint lain langsung bisa dicoba.
+
+---
+
+## Panduan Menjalankan Lokal (manual)
 
 ### 1. Jalankan Database SQL Server (Docker Compose)
 
