@@ -6,7 +6,7 @@ cd "$(dirname "$0")"
 
 [ -f .env ] || { cp .env.example .env; echo ".env dibuat dari .env.example"; }
 
-echo "1/3 Menyalakan SQL Server (Docker)..."
+echo "1/4 Menyalakan SQL Server (Docker)..."
 docker compose up -d
 echo "    Menunggu SQL Server siap..."
 for _ in $(seq 1 60); do
@@ -15,19 +15,24 @@ for _ in $(seq 1 60); do
 done
 
 mkdir -p logs
-echo "2/3 Menjalankan API  -> http://localhost:5017/swagger  (log: logs/api.out)"
-dotnet run --project src/HelpDeskPro.Api --launch-profile http > logs/api.out 2>&1 &
-API_PID=$!
-echo "3/3 Menjalankan Web  -> http://localhost:5015          (log: logs/web.out)"
-dotnet run --project src/HelpDeskPro.Web --launch-profile http > logs/web.out 2>&1 &
-WEB_PID=$!
-trap 'echo; echo "Menghentikan API & Web..."; kill $API_PID $WEB_PID 2>/dev/null; wait 2>/dev/null' INT TERM EXIT
+echo "2/4 Build solution (sekali, agar API & Web tidak berebut file saat build)..."
+dotnet build HelpDeskPro.sln -v quiet -nologo
 
-echo "    Menunggu aplikasi siap..."
-for _ in $(seq 1 90); do
-  curl -fs -o /dev/null http://localhost:5015/login && curl -fs -o /dev/null http://localhost:5017/swagger/index.html && break
-  sleep 2
-done
+wait_url() { # url timeout_detik
+  for _ in $(seq 1 $(( $2 / 2 ))); do curl -fs -o /dev/null "$1" && return 0; sleep 2; done; return 1
+}
+
+echo "3/4 Menjalankan API  -> http://localhost:5017/swagger  (log: logs/api.out)"
+dotnet run --no-build --project src/HelpDeskPro.Api --launch-profile http > logs/api.out 2>&1 &
+API_PID=$!
+trap 'echo; echo "Menghentikan API & Web..."; kill $API_PID ${WEB_PID:-} 2>/dev/null; wait 2>/dev/null' INT TERM EXIT
+echo "    Menunggu API siap..."
+wait_url http://localhost:5017/swagger/index.html 180 || { echo "API GAGAL START. Lihat logs/api.out"; tail -20 logs/api.out; exit 1; }
+
+echo "4/4 Menjalankan Web  -> http://localhost:5015          (log: logs/web.out)"
+dotnet run --no-build --project src/HelpDeskPro.Web --launch-profile http > logs/web.out 2>&1 &
+WEB_PID=$!
+wait_url http://localhost:5015/login 120 || { echo "WEB GAGAL START. Lihat logs/web.out"; tail -20 logs/web.out; exit 1; }
 
 cat <<'MSG'
 
