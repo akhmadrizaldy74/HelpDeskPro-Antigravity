@@ -737,3 +737,8 @@ button, a, .mud-nav-link {
 .filter-panel {
     padding: 12px 16px !important;
 }
+
+/* Fokus otomatis ke <h1> saat navigasi (aksesibilitas) tanpa kotak outline. */
+h1:focus {
+    outline: none;
+}
