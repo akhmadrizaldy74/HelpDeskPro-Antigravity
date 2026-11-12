@@ -228,7 +228,7 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    @foreach (var esc in _pendingEscalations)
+                                    @foreach (var esc in _pendingEscalations.OrderByDescending(e => e.EscalatedAt).Take(DashboardEscalationLimit))
                                     {
                                         <tr>
                                             <td class="font-mono">
@@ -260,6 +260,13 @@
                                     }
                                 </tbody>
                             </table>
+                            @if (_pendingEscalations.Count > DashboardEscalationLimit)
+                            {
+                                <div class="pa-3" style="font-size: 12px; color: #6B6B6B;">
+                                    Menampilkan @DashboardEscalationLimit eskalasi terbaru dari @_pendingEscalations.Count.
+                                    <a href="/escalations" style="color: #1F4E79; font-weight: 600;">Lihat semua &rarr;</a>
+                                </div>
+                            }
                         </div>
                     }
                 </div>
@@ -274,6 +281,7 @@
 
     private DashboardSummaryDto? _summary = null;
     private List<AgentWorkloadDto> _agentWorkload = new();
+    private const int DashboardEscalationLimit = 5;
     private List<PendingEscalationDto> _pendingEscalations = new();
 
     private List<ChartSeries<double>> _chartSeries = new();

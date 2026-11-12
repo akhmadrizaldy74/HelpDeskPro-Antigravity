@@ -53,7 +53,13 @@ public class AuditableEntityInterceptor : SaveChangesInterceptor
             switch (entry.State)
             {
                 case EntityState.Added:
-                    entry.Entity.CreatedAt = utcNow;
+                    // Pertahankan CreatedAt yang diisi eksplisit (mis. data seeding historis);
+                    // hanya isi otomatis jika belum diset.
+                    if (entry.Entity.CreatedAt == default)
+                    {
+                        entry.Entity.CreatedAt = utcNow;
+                    }
+
                     if (string.IsNullOrWhiteSpace(entry.Entity.CreatedBy) || entry.Entity.CreatedBy == Guid.Empty.ToString())
                     {
                         entry.Entity.CreatedBy = auditActor;

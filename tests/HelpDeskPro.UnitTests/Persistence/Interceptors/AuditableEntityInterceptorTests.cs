@@ -57,6 +57,35 @@ public class AuditableEntityInterceptorTests
     }
 
     [Fact]
+    public void SavingChanges_WhenEntityAddedWithExplicitCreatedAt_ShouldKeepIt()
+    {
+        // Arrange
+        var now = new DateTime(2026, 11, 9, 12, 0, 0, DateTimeKind.Utc);
+        var historical = now.AddDays(-5);
+
+        var dateTimeProvider = Substitute.For<IDateTimeProvider>();
+        dateTimeProvider.UtcNow.Returns(now);
+        var currentUserService = Substitute.For<ICurrentUserService>();
+
+        var interceptor = new AuditableEntityInterceptor(dateTimeProvider, currentUserService);
+
+        var options = new DbContextOptionsBuilder<TestDbContext>()
+            .UseSqlServer("Server=(localdb)\\mssqllocaldb;Database=TestDb;Trusted_Connection=True;")
+            .Options;
+
+        using var context = new TestDbContext(options);
+        var entity = new TestAuditableEntity { Name = "Seed", CreatedAt = historical };
+        context.TestEntities.Add(entity);
+
+        // Act
+        interceptor.UpdateAuditEntities(context);
+
+        // Assert
+        entity.CreatedAt.Should().Be(historical);
+        entity.CreatedBy.Should().Be("system");
+    }
+
+    [Fact]
     public void SavingChanges_WhenEntityDeleted_ShouldConvertToSoftDelete()
     {
         // Arrange
