@@ -1,0 +1,28 @@
+@page "/"
+@inject NavigationManager Navigation
+
+<PageTitle>HelpDeskPro</PageTitle>
+
+<div class="d-flex justify-center mt-12">
+    <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+</div>
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthState { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var user = AuthState is null ? null : (await AuthState).User;
+
+        // Halaman awal sesuai peran pengguna.
+        var target = user switch
+        {
+            not null when user.IsInRole("Supervisor") || user.IsInRole("Admin") => "/dashboard",
+            not null when user.IsInRole("Agent") => "/tickets",
+            _ => "/tickets?my=true"
+        };
+
+        Navigation.NavigateTo(target, replace: true);
+    }
+}

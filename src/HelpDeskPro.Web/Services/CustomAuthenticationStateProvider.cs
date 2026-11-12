@@ -6,78 +6,82 @@ using Microsoft.AspNetCore.Components.Authorization;
 
 public class CustomAuthenticationStateProvider : AuthenticationStateProvider
 {
-    private readonly ILocalStorageService _localStorage;
-    private readonly AuthenticationState _anonymous;
-    private readonly AuthenticationState _devState;
-    private static readonly JwtSecurityTokenHandler _tokenHandler = new();
-    private bool _isExplicitlyLoggedOut;
+    public const string TokenStorageKey = "authToken";
 
-    public CustomAuthenticationStateProvider(ILocalStorageService localStorage)
+    private static readonly JwtSecurityTokenHandler _tokenHandler = new();
+    private static readonly AuthenticationState _anonymous = new(new ClaimsPrincipal(new ClaimsIdentity()));
+
+    private readonly ILocalStorageService _localStorage;
+    private readonly TokenStore _tokenStore;
+
+    public CustomAuthenticationStateProvider(ILocalStorageService localStorage, TokenStore tokenStore)
     {
         _localStorage = localStorage;
-        _anonymous = new AuthenticationState(new ClaimsPrincipal(new ClaimsIdentity()));
-
-        var devIdentity = new ClaimsIdentity([
-            new Claim(ClaimTypes.NameIdentifier, "11111111-2222-3333-4444-555555555555"),
-            new Claim(ClaimTypes.Email, "admin@helpdeskpro.local"),
-            new Claim(ClaimTypes.Name, "Budi Santoso"),
-            new Claim(ClaimTypes.Role, "Admin"),
-            new Claim("departmentName", "IT Support")
-        ], "devAuth", ClaimTypes.Name, ClaimTypes.Role);
-        _devState = new AuthenticationState(new ClaimsPrincipal(devIdentity));
+        _tokenStore = tokenStore;
     }
 
     public override async Task<AuthenticationState> GetAuthenticationStateAsync()
     {
-        if (_isExplicitlyLoggedOut)
+        if (!_tokenStore.IsLoaded)
         {
-            return _anonymous;
+            var stored = await _localStorage.GetItemAsync(TokenStorageKey);
+            _tokenStore.Set(stored);
         }
 
-        var token = await _localStorage.GetItemAsync("authToken");
+        var token = _tokenStore.Token;
         if (string.IsNullOrWhiteSpace(token))
         {
-            // Development fallback for interactive preview
-            var env = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
-            if (string.IsNullOrEmpty(env) || env.Equals("Development", StringComparison.OrdinalIgnoreCase))
-            {
-                return _devState;
-            }
             return _anonymous;
         }
 
-        try
+        var principal = BuildPrincipal(token);
+        if (principal is null)
         {
-            var jwt = _tokenHandler.ReadJwtToken(token);
-            if (jwt.ValidTo < DateTime.UtcNow)
-            {
-                await _localStorage.RemoveItemAsync("authToken");
-                return _anonymous;
-            }
-
-            var identity = new ClaimsIdentity(jwt.Claims, "jwt", ClaimTypes.Name, ClaimTypes.Role);
-            return new AuthenticationState(new ClaimsPrincipal(identity));
-        }
-        catch
-        {
-            await _localStorage.RemoveItemAsync("authToken");
+            _tokenStore.Clear();
+            await _localStorage.RemoveItemAsync(TokenStorageKey);
             return _anonymous;
         }
+
+        return new AuthenticationState(principal);
     }
 
     public async Task NotifyUserAuthentication(string token)
     {
-        _isExplicitlyLoggedOut = false;
-        await _localStorage.SetItemAsync("authToken", token);
-        var authState = await GetAuthenticationStateAsync();
-        NotifyAuthenticationStateChanged(Task.FromResult(authState));
+        _tokenStore.Set(token);
+        await _localStorage.SetItemAsync(TokenStorageKey, token);
+        NotifyAuthenticationStateChanged(GetAuthenticationStateAsync());
     }
 
     public async Task NotifyUserLogout()
     {
-        _isExplicitlyLoggedOut = true;
-        await _localStorage.RemoveItemAsync("authToken");
+        _tokenStore.Clear();
+        await _localStorage.RemoveItemAsync(TokenStorageKey);
         NotifyAuthenticationStateChanged(Task.FromResult(_anonymous));
     }
-}
 
+    private static ClaimsPrincipal? BuildPrincipal(string token)
+    {
+        try
+        {
+            var jwt = _tokenHandler.ReadJwtToken(token);
+            if (jwt.ValidTo <= DateTime.UtcNow)
+            {
+                return null;
+            }
+
+            // Token ditulis dengan nama klaim pendek (unique_name, role, nameid, email);
+            // petakan kembali ke ClaimTypes standar agar Identity.Name & IsInRole berfungsi.
+            var claims = jwt.Claims.Select(c =>
+                JwtSecurityTokenHandler.DefaultInboundClaimTypeMap.TryGetValue(c.Type, out var mapped)
+                    ? new Claim(mapped, c.Value, c.ValueType, c.Issuer)
+                    : c);
+
+            var identity = new ClaimsIdentity(claims, "jwt", ClaimTypes.Name, ClaimTypes.Role);
+            return new ClaimsPrincipal(identity);
+        }
+        catch (ArgumentException)
+        {
+            return null;
+        }
+    }
+}

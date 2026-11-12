@@ -89,7 +89,7 @@
 
 @code {
     private bool _isLoading = false;
-    private List<CategoryDto> _categories = GetFallbackCategories();
+    private List<CategoryDto> _categories = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -102,18 +102,20 @@
         try
         {
             var res = await ApiClient.GetCategoriesAsync();
-            if (res?.Success == true && res.Data != null && res.Data.Count > 0)
+            if (res?.Success == true && res.Data != null)
             {
                 _categories = res.Data.ToList();
             }
             else
             {
-                _categories = GetFallbackCategories();
+                _categories = new();
+                Snackbar.Add(res?.Errors.FirstOrDefault() ?? "Gagal memuat data dari server.", Severity.Error);
             }
         }
-        catch
+        catch (HttpRequestException)
         {
-            _categories = GetFallbackCategories();
+            _categories = new();
+            Snackbar.Add("Tidak dapat terhubung ke server API.", Severity.Error);
         }
         finally
         {
@@ -185,13 +187,4 @@
         }
     }
 
-    private static List<CategoryDto> GetFallbackCategories() => new()
-    {
-        new(1, "Hardware", true, 34),
-        new(2, "Software", true, 28),
-        new(3, "Jaringan & Internet", true, 22),
-        new(4, "Akses & Akun", true, 19),
-        new(5, "Email & Kalender", true, 14),
-        new(6, "Lain-lain", true, 7)
-    };
 }

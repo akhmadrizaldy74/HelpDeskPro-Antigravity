@@ -11,24 +11,40 @@ builder.Services.AddRazorComponents()
 
 builder.Services.AddMudServices();
 
+// Autentikasi berbasis JWT yang disimpan di localStorage browser.
+// Semua service di bawah ini scoped = satu instance per sirkuit Blazor.
 builder.Services.AddScoped<ILocalStorageService, LocalStorageService>();
+builder.Services.AddScoped<TokenStore>();
 builder.Services.AddScoped<CustomAuthenticationStateProvider>();
 builder.Services.AddScoped<AuthenticationStateProvider>(sp => sp.GetRequiredService<CustomAuthenticationStateProvider>());
 builder.Services.AddCascadingAuthenticationState();
-builder.Services.AddAuthentication("Cookies")
-    .AddCookie("Cookies", options =>
-    {
-        options.LoginPath = "/login";
-    });
 builder.Services.AddAuthorizationCore();
 
-builder.Services.AddTransient<AuthHeaderHandler>();
+var apiBaseUrl = new Uri((builder.Configuration["ApiSettings:BaseUrl"] ?? "http://localhost:5017").TrimEnd('/') + "/");
 
-var apiBaseUrl = builder.Configuration["ApiSettings:BaseUrl"] ?? "http://localhost:5017";
-builder.Services.AddHttpClient<IApiClient, ApiClient>(client =>
+// HttpMessageHandler dikelola oleh IHttpClientFactory (pooling koneksi), sedangkan
+// AuthHeaderHandler dibuat di scope sirkuit agar dapat membaca token pengguna yang login.
+// (Handler yang didaftarkan via AddHttpMessageHandler berjalan di scope terpisah sehingga
+// tidak dapat mengakses localStorage / state sirkuit.)
+builder.Services.AddHttpClient("HelpDeskProApi");
+builder.Services.AddScoped<IApiClient>(sp =>
 {
-    client.BaseAddress = new Uri(apiBaseUrl.TrimEnd('/') + "/");
-}).AddHttpMessageHandler<AuthHeaderHandler>();
+    var handlerFactory = sp.GetRequiredService<IHttpMessageHandlerFactory>();
+    var authHandler = new AuthHeaderHandler(
+        sp.GetRequiredService<TokenStore>(),
+        sp.GetRequiredService<CustomAuthenticationStateProvider>())
+    {
+        InnerHandler = handlerFactory.CreateHandler("HelpDeskProApi")
+    };
+
+    var httpClient = new HttpClient(authHandler, disposeHandler: true)
+    {
+        BaseAddress = apiBaseUrl,
+        Timeout = TimeSpan.FromSeconds(60)
+    };
+
+    return new ApiClient(httpClient);
+});
 
 var app = builder.Build();
 
@@ -37,14 +53,16 @@ if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error", createScopeForErrors: true);
     app.UseHsts();
+    app.UseHttpsRedirection();
 }
-
-app.UseHttpsRedirection();
 
 app.UseStaticFiles();
 app.UseAntiforgery();
 
+// Otorisasi halaman dilakukan di sisi komponen (AuthorizeRouteView) karena token
+// hanya tersedia di browser; endpoint HTTP-nya sendiri tidak memerlukan autentikasi.
 app.MapRazorComponents<App>()
-    .AddInteractiveServerRenderMode();
+    .AddInteractiveServerRenderMode()
+    .AllowAnonymous();
 
 app.Run();

@@ -411,54 +411,73 @@
     private List<CategoryLookupDto> _categories = [];
     private List<AssigneeLookupDto> _assignees = [];
 
+    private bool _initialized;
+    private bool _isRequester;
+    private bool _hasAppliedParameters;
+    private bool? _appliedMyTickets;
+    private string? _appliedQuerySearch;
+
+    private bool IsMyView => MyTickets == true;
+
     protected override async Task OnInitializedAsync()
     {
-        try
-        {
-            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
-            var user = authState.User;
-            _currentUserId = user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "default";
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        _currentUserId = user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "default";
+        _isRequester = !(user.IsInRole("Agent") || user.IsInRole("Supervisor") || user.IsInRole("Admin"));
 
-            // 1. Try to restore filters from localStorage
-            await RestoreFiltersFromStorageAsync();
-
-            // 2. Query string overrides (if navigated from search bar or "Tiket saya" menu)
-            if (!string.IsNullOrWhiteSpace(QuerySearch))
-            {
-                _search = QuerySearch;
-            }
-
-            if (MyTickets == true)
-            {
-                if (Guid.TryParse(_currentUserId, out var myGuid))
-                {
-                    _selectedAssigneeId = myGuid;
-                    _unassignedOnly = false;
-                }
-            }
-
-            // 3. Load filter lookup options
-            await LoadFilterOptionsAsync();
-
-            // 4. Load tickets
-            await LoadTicketsAsync();
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error initializing tickets page: {ex.Message}");
-            _isLoading = false;
-        }
+        await LoadFilterOptionsAsync();
+        _initialized = true;
     }
 
     protected override async Task OnParametersSetAsync()
     {
-        // React to query string changes (e.g. searching from top bar while already on /tickets)
-        if (!string.IsNullOrWhiteSpace(QuerySearch) && QuerySearch != _search)
+        if (!_initialized)
+        {
+            return;
+        }
+
+        // Dipanggil saat pertama kali dan setiap query string berubah
+        // (mis. pindah dari "Tiket saya" ke "Semua tiket" atau mencari dari top bar).
+        if (_hasAppliedParameters && _appliedMyTickets == MyTickets && _appliedQuerySearch == QuerySearch)
+        {
+            return;
+        }
+
+        _hasAppliedParameters = true;
+        _appliedMyTickets = MyTickets;
+        _appliedQuerySearch = QuerySearch;
+
+        ClearFilterFields();
+        if (!IsMyView)
+        {
+            // Preferensi filter hanya dipulihkan untuk tampilan "Semua tiket".
+            await RestoreFiltersFromStorageAsync();
+        }
+        else if (!_isRequester && Guid.TryParse(_currentUserId, out var myGuid))
+        {
+            // Untuk agent/supervisor/admin, "Tiket saya" = tiket yang ditugaskan ke saya.
+            // Requester sudah otomatis dibatasi ke tiket miliknya oleh API.
+            _selectedAssigneeId = myGuid;
+        }
+
+        if (!string.IsNullOrWhiteSpace(QuerySearch))
         {
             _search = QuerySearch;
-            _currentPage = 1;
-            await LoadTicketsAsync();
         }
+
+        _currentPage = 1;
+        await LoadTicketsAsync();
+    }
+
+    private void ClearFilterFields()
+    {
+        _selectedStatuses = new HashSet<TicketStatus>();
+        _selectedPriorities = new HashSet<TicketPriority>();
+        _selectedCategoryId = null;
+        _selectedAssigneeId = null;
+        _unassignedOnly = false;
+        _search = string.Empty;
     }
 
     private async Task LoadFilterOptionsAsync()
@@ -472,33 +491,10 @@
                 _assignees = optionsRes.Data.Assignees.ToList();
             }
         }
-        catch
+        catch (HttpRequestException)
         {
             _categories = [];
             _assignees = [];
-        }
-
-        if (_categories.Count == 0)
-        {
-            _categories =
-            [
-                new(1, "Hardware"),
-                new(2, "Software"),
-                new(3, "Jaringan"),
-                new(4, "Akses & Akun"),
-                new(5, "Email"),
-                new(6, "Printer")
-            ];
-        }
-
-        if (_assignees.Count == 0)
-        {
-            _assignees =
-            [
-                new(Guid.Parse("44444444-4444-4444-4444-444444444444"), "Agus Pratama"),
-                new(Guid.Parse("55555555-5555-5555-5555-555555555555"), "Rina Kartika"),
-                new(Guid.Parse("33333333-3333-3333-3333-333333333333"), "Hendra Wijaya")
-            ];
         }
     }
 
@@ -528,191 +524,33 @@
                 _totalCount = response.Data.TotalCount;
                 _currentPage = response.Data.Page;
                 _pageSize = response.Data.PageSize;
-                _totalPages = response.Data.TotalPages;
+                _totalPages = Math.Max(1, response.Data.TotalPages);
             }
             else
             {
-                // Fallback to sample seed dataset
-                ApplyFallbackFiltering(query);
+                _tickets = [];
+                _totalCount = 0;
+                _totalPages = 1;
+                Snackbar.Add(response?.Errors.FirstOrDefault() ?? "Gagal memuat daftar tiket.", Severity.Error);
             }
 
-            // Save filter preferences to localStorage
-            await SaveFiltersToStorageAsync();
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error loading tickets: {ex.Message}");
-            var query = new GetTicketsQuery
+            if (!IsMyView)
             {
-                Statuses = _selectedStatuses.ToList(),
-                Priorities = _selectedPriorities.ToList(),
-                CategoryId = _selectedCategoryId,
-                AssigneeId = _unassignedOnly ? null : _selectedAssigneeId,
-                Unassigned = _unassignedOnly ? true : null,
-                Search = string.IsNullOrWhiteSpace(_search) ? null : _search.Trim(),
-                Page = _currentPage,
-                PageSize = _pageSize
-            };
-            ApplyFallbackFiltering(query);
+                await SaveFiltersToStorageAsync();
+            }
+        }
+        catch (HttpRequestException)
+        {
+            _tickets = [];
+            _totalCount = 0;
+            _totalPages = 1;
+            Snackbar.Add("Tidak dapat terhubung ke server API.", Severity.Error);
         }
         finally
         {
             _isLoading = false;
             StateHasChanged();
         }
-    }
-
-    private void ApplyFallbackFiltering(GetTicketsQuery query)
-    {
-        var all = GetSampleTickets();
-        var filtered = all.AsEnumerable();
-
-        if (query.Statuses is { Count: > 0 })
-        {
-            filtered = filtered.Where(t => query.Statuses.Contains(t.Status));
-        }
-
-        if (query.Priorities is { Count: > 0 })
-        {
-            filtered = filtered.Where(t => query.Priorities.Contains(t.Priority));
-        }
-
-        if (query.CategoryId.HasValue)
-        {
-            filtered = filtered.Where(t => t.CategoryId == query.CategoryId.Value);
-        }
-
-        if (query.AssigneeId.HasValue)
-        {
-            filtered = filtered.Where(t => t.AssigneeId == query.AssigneeId.Value);
-        }
-
-        if (query.Unassigned == true)
-        {
-            filtered = filtered.Where(t => t.AssigneeId == null);
-        }
-
-        if (!string.IsNullOrWhiteSpace(query.Search))
-        {
-            var s = query.Search.Trim().ToLowerInvariant();
-            filtered = filtered.Where(t => t.TicketNo.ToLowerInvariant().Contains(s) || t.Title.ToLowerInvariant().Contains(s));
-        }
-
-        var list = filtered.ToList();
-        _totalCount = list.Count;
-        _totalPages = Math.Max(1, (int)Math.Ceiling(_totalCount / (double)_pageSize));
-        _currentPage = Math.Clamp(_currentPage, 1, _totalPages);
-        _tickets = list.Skip((_currentPage - 1) * _pageSize).Take(_pageSize).ToList();
-    }
-
-    private static List<TicketListItemDto> GetSampleTickets()
-    {
-        var now = DateTime.UtcNow;
-        return
-        [
-            new()
-            {
-                Id = 1,
-                TicketNo = "HD-2026-000001",
-                Title = "Printer lantai 3 paper jam terus",
-                CategoryId = 1,
-                CategoryName = "Hardware",
-                Priority = TicketPriority.High,
-                Status = TicketStatus.InProgress,
-                RequesterName = "Budi Santoso",
-                AssigneeId = Guid.Parse("44444444-4444-4444-4444-444444444444"),
-                AssigneeName = "Agus Pratama",
-                ResolutionDueAt = now.AddMinutes(-45),
-                IsSlaBreached = true,
-                CreatedAt = now.AddHours(-2),
-                UpdatedAt = now.AddMinutes(-10)
-            },
-            new()
-            {
-                Id = 2,
-                TicketNo = "HD-2026-000002",
-                Title = "VPN putus-putus saat WFH",
-                CategoryId = 3,
-                CategoryName = "Jaringan",
-                Priority = TicketPriority.Critical,
-                Status = TicketStatus.Open,
-                RequesterName = "Dewi Lestari",
-                AssigneeId = null,
-                AssigneeName = null,
-                ResolutionDueAt = now.AddMinutes(15),
-                IsSlaBreached = false,
-                CreatedAt = now.AddMinutes(-30),
-                UpdatedAt = now.AddMinutes(-25)
-            },
-            new()
-            {
-                Id = 3,
-                TicketNo = "HD-2026-000003",
-                Title = "Minta akses folder shared drive Procurement",
-                CategoryId = 4,
-                CategoryName = "Akses & Akun",
-                Priority = TicketPriority.Medium,
-                Status = TicketStatus.Pending,
-                RequesterName = "Siti Rahma",
-                AssigneeId = Guid.Parse("55555555-5555-5555-5555-555555555555"),
-                AssigneeName = "Rina Kartika",
-                ResolutionDueAt = now.AddHours(3).AddMinutes(10),
-                IsSlaBreached = false,
-                CreatedAt = now.AddHours(-5),
-                UpdatedAt = now.AddHours(-1)
-            },
-            new()
-            {
-                Id = 4,
-                TicketNo = "HD-2026-000004",
-                Title = "Laptop baru untuk karyawan onboarding 17 Nov",
-                CategoryId = 1,
-                CategoryName = "Hardware",
-                Priority = TicketPriority.Low,
-                Status = TicketStatus.Resolved,
-                RequesterName = "Ahmad Zaki",
-                AssigneeId = Guid.Parse("33333333-3333-3333-3333-333333333333"),
-                AssigneeName = "Hendra Wijaya",
-                ResolutionDueAt = now.AddHours(20),
-                IsSlaBreached = false,
-                CreatedAt = now.AddHours(-12),
-                UpdatedAt = now.AddHours(-3)
-            },
-            new()
-            {
-                Id = 5,
-                TicketNo = "HD-2026-000005",
-                Title = "Email Outlook tidak bisa sinkronisasi kalender rapat pimpinan",
-                CategoryId = 5,
-                CategoryName = "Email",
-                Priority = TicketPriority.High,
-                Status = TicketStatus.Open,
-                RequesterName = "Eko Prasetyo",
-                AssigneeId = Guid.Parse("44444444-4444-4444-4444-444444444444"),
-                AssigneeName = "Agus Pratama",
-                ResolutionDueAt = now.AddMinutes(80),
-                IsSlaBreached = false,
-                CreatedAt = now.AddHours(-1),
-                UpdatedAt = now.AddMinutes(-40)
-            },
-            new()
-            {
-                Id = 6,
-                TicketNo = "HD-2026-000006",
-                Title = "Lisensi software Adobe Photoshop perlu perpanjangan tahunan divisi desain",
-                CategoryId = 2,
-                CategoryName = "Software",
-                Priority = TicketPriority.Medium,
-                Status = TicketStatus.Closed,
-                RequesterName = "Maya Sari",
-                AssigneeId = Guid.Parse("55555555-5555-5555-5555-555555555555"),
-                AssigneeName = "Rina Kartika",
-                ResolutionDueAt = now.AddHours(5),
-                IsSlaBreached = false,
-                CreatedAt = now.AddDays(-2),
-                UpdatedAt = now.AddDays(-1)
-            }
-        ];
     }
 
     private async Task SaveFiltersToStorageAsync()

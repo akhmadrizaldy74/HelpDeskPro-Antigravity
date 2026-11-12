@@ -3,12 +3,16 @@
 @code {
     protected override void OnInitialized()
     {
-        var uri = Navigation.Uri;
-        var relative = Navigation.ToBaseRelativePath(uri);
-        if (!string.Equals(relative, "login", StringComparison.OrdinalIgnoreCase))
+        var relative = Navigation.ToBaseRelativePath(Navigation.Uri);
+        if (relative.StartsWith("login", StringComparison.OrdinalIgnoreCase))
         {
-            Navigation.NavigateTo("/login");
+            return;
         }
+
+        var returnUrl = "/" + relative;
+        var target = returnUrl == "/"
+            ? "/login"
+            : $"/login?returnUrl={Uri.EscapeDataString(returnUrl)}";
+        Navigation.NavigateTo(target, replace: true);
     }
 }
-

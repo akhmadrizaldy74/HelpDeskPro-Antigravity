@@ -280,7 +280,9 @@
     private int? _selectedCategoryId;
     private TicketPriority _priority = TicketPriority.Medium;
     private string _description = string.Empty;
-    private List<IBrowserFile> _selectedFiles = [];
+    private List<PendingFile> _selectedFiles = [];
+
+    private sealed record PendingFile(string Name, string ContentType, long Size, byte[] Content);
 
     private List<CategoryLookupDto> _categories = [];
     private bool _isSubmitting;
@@ -301,23 +303,15 @@
             {
                 _categories = optionsRes.Data.Categories.ToList();
             }
+            else
+            {
+                _errorMessage = optionsRes?.Errors.FirstOrDefault() ?? "Gagal memuat daftar kategori.";
+            }
         }
-        catch
+        catch (HttpRequestException)
         {
             _categories = [];
-        }
-
-        if (_categories.Count == 0)
-        {
-            _categories =
-            [
-                new(1, "Hardware"),
-                new(2, "Software"),
-                new(3, "Jaringan"),
-                new(4, "Akses & Akun"),
-                new(5, "Email"),
-                new(6, "Printer")
-            ];
+            _errorMessage = "Tidak dapat terhubung ke server API.";
         }
     }
 
@@ -326,9 +320,19 @@
         _selectedCategoryId = id;
     }
 
-    private void OnFilesSelected(InputFileChangeEventArgs e)
+    private async Task OnFilesSelected(InputFileChangeEventArgs e)
     {
-        var files = e.GetMultipleFiles(maximumFileCount: 10);
+        IReadOnlyList<IBrowserFile> files;
+        try
+        {
+            files = e.GetMultipleFiles(maximumFileCount: 10);
+        }
+        catch (InvalidOperationException)
+        {
+            Snackbar.Add("Maksimal 10 file dapat dipilih sekaligus.", Severity.Warning);
+            return;
+        }
+
         string[] allowed = [".jpg", ".jpeg", ".png", ".pdf", ".docx", ".xlsx", ".txt", ".log"];
 
         foreach (var file in files)
@@ -352,11 +356,24 @@
                 continue;
             }
 
-            _selectedFiles.Add(file);
+            // Isi file langsung dibaca ke memori: referensi IBrowserFile menjadi tidak valid
+            // ketika pengguna memilih file lagi pada input yang sama.
+            try
+            {
+                await using var stream = file.OpenReadStream(maxAllowedSize: 5 * 1024 * 1024);
+                using var memory = new MemoryStream();
+                await stream.CopyToAsync(memory);
+                var contentType = string.IsNullOrWhiteSpace(file.ContentType) ? "application/octet-stream" : file.ContentType;
+                _selectedFiles.Add(new PendingFile(file.Name, contentType, file.Size, memory.ToArray()));
+            }
+            catch (IOException)
+            {
+                Snackbar.Add($"Gagal membaca file {file.Name}.", Severity.Error);
+            }
         }
     }
 
-    private void RemoveFile(IBrowserFile file)
+    private void RemoveFile(PendingFile file)
     {
         _selectedFiles.Remove(file);
     }
@@ -393,40 +410,41 @@
             {
                 var newTicket = result.Data;
 
-                // Upload any attached files sequentially
-                if (_selectedFiles.Count > 0)
+                // Unggah lampiran satu per satu; kegagalan unggah tidak membatalkan tiket.
+                var failedUploads = new List<string>();
+                foreach (var file in _selectedFiles)
                 {
-                    foreach (var file in _selectedFiles)
+                    try
                     {
-                        try
+                        using var stream = new MemoryStream(file.Content);
+                        var uploadRes = await ApiClient.UploadAttachmentAsync(newTicket.Id, stream, file.Name, file.ContentType, file.Size);
+                        if (uploadRes?.Success != true)
                         {
-                            using var stream = file.OpenReadStream(maxAllowedSize: 5 * 1024 * 1024);
-                            await ApiClient.UploadAttachmentAsync(newTicket.Id, stream, file.Name, file.ContentType, file.Size);
+                            failedUploads.Add($"{file.Name}: {uploadRes?.Errors.FirstOrDefault() ?? "gagal"}");
                         }
-                        catch (Exception uploadEx)
-                        {
-                            Console.WriteLine($"Error uploading file {file.Name}: {uploadEx.Message}");
-                        }
+                    }
+                    catch (HttpRequestException)
+                    {
+                        failedUploads.Add($"{file.Name}: koneksi ke server gagal");
                     }
                 }
 
                 Snackbar.Add($"Tiket {newTicket.TicketNo} dibuat", Severity.Success);
+                foreach (var failed in failedUploads)
+                {
+                    Snackbar.Add($"Lampiran tidak terunggah — {failed}", Severity.Warning);
+                }
+
                 Navigation.NavigateTo($"/tickets/{newTicket.Id}");
             }
             else
             {
-                // Fallback for development preview
-                var fakeId = DateTime.UtcNow.Ticks % 10000;
-                Snackbar.Add($"Tiket HD-2026-00{fakeId:D4} dibuat", Severity.Success);
-                Navigation.NavigateTo($"/tickets/1");
+                _errorMessage = result?.Errors.FirstOrDefault() ?? "Gagal membuat tiket. Silakan coba lagi.";
             }
         }
-        catch (Exception ex)
+        catch (HttpRequestException)
         {
-            Console.WriteLine($"Exception creating ticket: {ex.Message}");
-            // Fallback preview
-            Snackbar.Add("Tiket HD-2026-000007 dibuat", Severity.Success);
-            Navigation.NavigateTo("/tickets/1");
+            _errorMessage = "Tidak dapat terhubung ke server API. Tiket belum tersimpan.";
         }
         finally
         {

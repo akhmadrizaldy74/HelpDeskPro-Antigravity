@@ -87,8 +87,8 @@
 
 @code {
     private bool _isLoading = false;
-    private List<NotificationDto> _notifications = GetFallbackNotifications();
-    private int _unreadCount = 2;
+    private List<NotificationDto> _notifications = new();
+    private int _unreadCount;
 
     protected override async Task OnInitializedAsync()
     {
@@ -101,20 +101,22 @@
         try
         {
             var res = await ApiClient.GetNotificationsAsync();
-            if (res?.Success == true && res.Data != null && res.Data.Count > 0)
+            if (res?.Success == true && res.Data != null)
             {
                 _notifications = res.Data.ToList();
             }
             else
             {
-                _notifications = GetFallbackNotifications();
+                _notifications = new();
+                Snackbar.Add(res?.Errors.FirstOrDefault() ?? "Gagal memuat data dari server.", Severity.Error);
             }
 
             _unreadCount = _notifications.Count(n => !n.IsRead);
         }
-        catch
+        catch (HttpRequestException)
         {
-            _notifications = GetFallbackNotifications();
+            _notifications = new();
+            Snackbar.Add("Tidak dapat terhubung ke server API.", Severity.Error);
             _unreadCount = _notifications.Count(n => !n.IsRead);
         }
         finally
@@ -128,14 +130,18 @@
         try
         {
             var res = await ApiClient.MarkAllNotificationsAsReadAsync();
-            if (res?.Success == true)
+            if (res?.Success != true)
             {
-                Snackbar.Add("Semua notifikasi ditandai telah dibaca.", Severity.Success);
+                Snackbar.Add(res?.Errors.FirstOrDefault() ?? "Gagal menandai notifikasi.", Severity.Error);
+                return;
             }
+
+            Snackbar.Add("Semua notifikasi ditandai telah dibaca.", Severity.Success);
         }
-        catch
+        catch (HttpRequestException)
         {
-            // fallback UI update
+            Snackbar.Add("Tidak dapat terhubung ke server API.", Severity.Error);
+            return;
         }
 
         foreach (var n in _notifications)
@@ -165,10 +171,4 @@
         _ => "Notifikasi"
     };
 
-    private static List<NotificationDto> GetFallbackNotifications() => new()
-    {
-        new() { Id = 1, TicketId = 1, TicketNo = "HD-2026-000001", Type = NotificationType.Escalation, Message = "Tiket HD-2026-000001 dieskalasi ke Level 1 (SLA resolusi terlampaui).", IsRead = false, CreatedAt = DateTime.UtcNow.AddMinutes(-15) },
-        new() { Id = 2, TicketId = 1, TicketNo = "HD-2026-000001", Type = NotificationType.NewComment, Message = "Agus Pratama menambahkan tanggapan pada tiket HD-2026-000001.", IsRead = false, CreatedAt = DateTime.UtcNow.AddHours(-1) },
-        new() { Id = 3, TicketId = 4, TicketNo = "HD-2026-000004", Type = NotificationType.StatusChanged, Message = "Status tiket HD-2026-000004 diubah menjadi InProgress oleh Dewi Lestari.", IsRead = true, CreatedAt = DateTime.UtcNow.AddHours(-3) }
-    };
 }

@@ -1,4 +1,5 @@
 @page "/dashboard"
+@attribute [Authorize(Roles = "Supervisor,Admin")]
 @inject IApiClient ApiClient
 @inject ISnackbar Snackbar
 @inject NavigationManager Navigation
@@ -102,13 +103,20 @@
                 </div>
             </div>
             <div class="chart-container">
-                <MudChart T="double"
-                          ChartType="ChartType.Bar" 
-                          ChartSeries="@_chartSeries" 
-                          ChartLabels="@_chartLabels" 
-                          Width="100%" 
-                          Height="220px" 
-                          ChartOptions="@_chartOptions" />
+                @if (_chartLabels.Length > 0)
+                {
+                    <MudChart T="double"
+                              ChartType="ChartType.Bar" 
+                              ChartSeries="@_chartSeries" 
+                              ChartLabels="@_chartLabels" 
+                              Width="100%" 
+                              Height="220px" 
+                              ChartOptions="@_chartOptions" />
+                }
+                else
+                {
+                    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="pa-4">Data tren belum tersedia.</MudText>
+                }
             </div>
         </div>
 
@@ -220,7 +228,7 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    @foreach (var esc in _pendingEscalations)
+                                    @foreach (var esc in _pendingEscalations.OrderByDescending(e => e.EscalatedAt).Take(DashboardEscalationLimit))
                                     {
                                         <tr>
                                             <td class="font-mono">
@@ -252,6 +260,13 @@
                                     }
                                 </tbody>
                             </table>
+                            @if (_pendingEscalations.Count > DashboardEscalationLimit)
+                            {
+                                <div class="pa-3" style="font-size: 12px; color: #6B6B6B;">
+                                    Menampilkan @DashboardEscalationLimit eskalasi terbaru dari @_pendingEscalations.Count.
+                                    <a href="/escalations" style="color: #1F4E79; font-weight: 600;">Lihat semua &rarr;</a>
+                                </div>
+                            }
                         </div>
                     }
                 </div>
@@ -264,9 +279,10 @@
     private int _periodDays = 30;
     private bool _isLoading = false;
 
-    private DashboardSummaryDto? _summary = GetFallbackSummary();
-    private List<AgentWorkloadDto> _agentWorkload = GetFallbackWorkload();
-    private List<PendingEscalationDto> _pendingEscalations = GetFallbackEscalations();
+    private DashboardSummaryDto? _summary = null;
+    private List<AgentWorkloadDto> _agentWorkload = new();
+    private const int DashboardEscalationLimit = 5;
+    private List<PendingEscalationDto> _pendingEscalations = new();
 
     private List<ChartSeries<double>> _chartSeries = new();
     private string[] _chartLabels = Array.Empty<string>();
@@ -277,7 +293,6 @@
 
     protected override async Task OnInitializedAsync()
     {
-        BuildChartData();
         await LoadDashboardData();
     }
 
@@ -290,13 +305,15 @@
     private async Task LoadDashboardData()
     {
         _isLoading = true;
+        var errors = new List<string>();
         try
         {
             var summaryTask = ApiClient.GetDashboardSummaryAsync(_periodDays);
             var workloadTask = ApiClient.GetAgentWorkloadAsync(_periodDays);
             var escalationTask = ApiClient.GetPendingEscalationsAsync();
+            var trendTask = ApiClient.GetTicketTrendAsync(7);
 
-            await Task.WhenAll(summaryTask, workloadTask, escalationTask);
+            await Task.WhenAll(summaryTask, workloadTask, escalationTask, trendTask);
 
             var summaryRes = await summaryTask;
             if (summaryRes?.Success == true && summaryRes.Data != null)
@@ -305,68 +322,70 @@
             }
             else
             {
-                _summary = GetFallbackSummary();
+                _summary = null;
+                errors.Add(summaryRes?.Errors.FirstOrDefault() ?? "Gagal memuat ringkasan tiket.");
             }
 
             var workloadRes = await workloadTask;
-            if (workloadRes?.Success == true && workloadRes.Data != null && workloadRes.Data.Count > 0)
+            if (workloadRes?.Success == true && workloadRes.Data != null)
             {
                 _agentWorkload = workloadRes.Data.ToList();
             }
             else
             {
-                _agentWorkload = GetFallbackWorkload();
+                _agentWorkload = new();
+                errors.Add(workloadRes?.Errors.FirstOrDefault() ?? "Gagal memuat beban kerja teknisi.");
             }
 
             var escRes = await escalationTask;
-            if (escRes?.Success == true && escRes.Data != null && escRes.Data.Count > 0)
+            if (escRes?.Success == true && escRes.Data != null)
             {
                 _pendingEscalations = escRes.Data.ToList();
             }
             else
             {
-                _pendingEscalations = GetFallbackEscalations();
+                _pendingEscalations = new();
+                errors.Add(escRes?.Errors.FirstOrDefault() ?? "Gagal memuat daftar eskalasi.");
             }
 
-            BuildChartData();
+            var trendRes = await trendTask;
+            if (trendRes?.Success == true && trendRes.Data != null)
+            {
+                BuildChartData(trendRes.Data);
+            }
+            else
+            {
+                BuildChartData(Array.Empty<TicketTrendPointDto>());
+                errors.Add(trendRes?.Errors.FirstOrDefault() ?? "Gagal memuat tren tiket.");
+            }
         }
-        catch
+        catch (HttpRequestException)
         {
-            _summary = GetFallbackSummary();
-            _agentWorkload = GetFallbackWorkload();
-            _pendingEscalations = GetFallbackEscalations();
-            BuildChartData();
+            _summary = null;
+            _agentWorkload = new();
+            _pendingEscalations = new();
+            BuildChartData(Array.Empty<TicketTrendPointDto>());
+            errors.Add("Tidak dapat terhubung ke server API.");
         }
         finally
         {
             _isLoading = false;
         }
+
+        foreach (var error in errors.Distinct())
+        {
+            Snackbar.Add(error, Severity.Error);
+        }
     }
 
-    private void BuildChartData()
+    private void BuildChartData(IReadOnlyList<TicketTrendPointDto> trend)
     {
-        var days = 7;
-        var labels = new string[days];
-        var incoming = new double[days];
-        var resolved = new double[days];
-
-        var today = DateTime.UtcNow;
-        var sampleIncoming = new[] { 14, 18, 12, 22, 19, 15, 8 };
-        var sampleResolved = new[] { 11, 16, 14, 20, 18, 14, 7 };
-
-        for (int i = 0; i < days; i++)
-        {
-            var dt = today.AddDays(- (days - 1 - i));
-            labels[i] = dt.ToString("dd MMM");
-            incoming[i] = sampleIncoming[i];
-            resolved[i] = sampleResolved[i];
-        }
-
-        _chartLabels = labels;
+        var culture = System.Globalization.CultureInfo.GetCultureInfo("id-ID");
+        _chartLabels = trend.Select(p => p.Date.ToString("dd MMM", culture)).ToArray();
         _chartSeries = new List<ChartSeries<double>>
         {
-            new ChartSeries<double> { Name = "Tiket masuk", Data = incoming },
-            new ChartSeries<double> { Name = "Tiket selesai", Data = resolved }
+            new ChartSeries<double> { Name = "Tiket masuk", Data = trend.Select(p => (double)p.CreatedCount).ToArray() },
+            new ChartSeries<double> { Name = "Tiket selesai", Data = trend.Select(p => (double)p.ResolvedCount).ToArray() }
         };
     }
 
@@ -382,15 +401,12 @@
             }
             else
             {
-                // Fallback for demo preview
-                _pendingEscalations.Remove(esc);
-                Snackbar.Add($"Eskalasi tiket {esc.TicketNo} telah ditandai ditindaklanjuti.", Severity.Success);
+                Snackbar.Add(res?.Errors.FirstOrDefault() ?? "Gagal menandai eskalasi.", Severity.Error);
             }
         }
-        catch
+        catch (HttpRequestException)
         {
-            _pendingEscalations.Remove(esc);
-            Snackbar.Add($"Eskalasi tiket {esc.TicketNo} telah ditandai ditindaklanjuti.", Severity.Success);
+            Snackbar.Add("Tidak dapat terhubung ke server API.", Severity.Error);
         }
     }
 
@@ -413,30 +429,4 @@
         _ => "Eskalasi"
     };
 
-    private static DashboardSummaryDto GetFallbackSummary() => new(
-        PeriodDays: 30,
-        TotalTickets: 124,
-        OpenTickets: 14,
-        InProgressTickets: 18,
-        PendingTickets: 6,
-        ResolvedTickets: 38,
-        ClosedTickets: 44,
-        CancelledTickets: 4,
-        SlaBreachedTickets: 3,
-        AverageResponseMinutes: 28,
-        AverageResolutionMinutes: 245
-    );
-
-    private static List<AgentWorkloadDto> GetFallbackWorkload() => new()
-    {
-        new(Guid.NewGuid(), "Agus Pratama", "agus.pratama@helpdeskpro.local", 12, 1, 4.8, 15),
-        new(Guid.NewGuid(), "Dewi Lestari", "dewi.lestari@helpdeskpro.local", 14, 2, 4.6, 18),
-        new(Guid.NewGuid(), "Rina Kartika", "rina.kartika@helpdeskpro.local", 8, 0, 5.0, 9)
-    };
-
-    private static List<PendingEscalationDto> GetFallbackEscalations() => new()
-    {
-        new(1, 1, "HD-2026-000001", "Printer lantai 3 paper jam terus", TicketPriority.High, 1, EscalationReason.SlaResolutionBreach, "Roller kertas aus", DateTime.UtcNow.AddHours(-2), "Budi Santoso", "Agus Pratama"),
-        new(2, 4, "HD-2026-000004", "VPN kantor pusat putus-putus saat WFH", TicketPriority.Critical, 2, EscalationReason.SlaResponseBreach, "Memerlukan eskalasi gateway ISP", DateTime.UtcNow.AddHours(-4), "Budi Santoso", "Dewi Lestari")
-    };
 }

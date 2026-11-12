@@ -91,7 +91,7 @@
 
 @code {
     private bool _isLoading = false;
-    private List<DepartmentDto> _departments = GetFallbackDepartments();
+    private List<DepartmentDto> _departments = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -104,18 +104,20 @@
         try
         {
             var res = await ApiClient.GetDepartmentsAsync();
-            if (res?.Success == true && res.Data != null && res.Data.Count > 0)
+            if (res?.Success == true && res.Data != null)
             {
                 _departments = res.Data.ToList();
             }
             else
             {
-                _departments = GetFallbackDepartments();
+                _departments = new();
+                Snackbar.Add(res?.Errors.FirstOrDefault() ?? "Gagal memuat data dari server.", Severity.Error);
             }
         }
-        catch
+        catch (HttpRequestException)
         {
-            _departments = GetFallbackDepartments();
+            _departments = new();
+            Snackbar.Add("Tidak dapat terhubung ke server API.", Severity.Error);
         }
         finally
         {
@@ -187,13 +189,4 @@
         }
     }
 
-    private static List<DepartmentDto> GetFallbackDepartments() => new()
-    {
-        new(1, "IT", "Teknologi Informasi", true, 8, 48),
-        new(2, "FIN", "Finance & Accounting", true, 6, 24),
-        new(3, "HR", "Human Resources", true, 5, 18),
-        new(4, "PROC", "Procurement", true, 4, 12),
-        new(5, "WH-CKR", "Warehouse Cikarang", true, 10, 16),
-        new(6, "SALES-JKT", "Sales Jakarta", true, 12, 6)
-    };
 }

@@ -5,6 +5,7 @@ using HelpDeskPro.Application.Features.Dashboard.Models;
 using HelpDeskPro.Application.Features.Dashboard.Queries.GetAgentWorkload;
 using HelpDeskPro.Application.Features.Dashboard.Queries.GetDashboardSummary;
 using HelpDeskPro.Application.Features.Dashboard.Queries.GetPendingEscalations;
+using HelpDeskPro.Application.Features.Dashboard.Queries.GetTicketTrend;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -37,5 +38,13 @@ public class DashboardController : ApiControllerBase
         var result = await Mediator.Send(new GetPendingEscalationsQuery(), cancellationToken);
         return HandleResult(result);
     }
-}
 
+    [HttpGet("ticket-trend")]
+    public async Task<ActionResult<ApiResponse<IReadOnlyList<TicketTrendPointDto>>>> GetTicketTrend(
+        [FromQuery] int days = 7,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await Mediator.Send(new GetTicketTrendQuery(days), cancellationToken);
+        return HandleResult(result);
+    }
+}

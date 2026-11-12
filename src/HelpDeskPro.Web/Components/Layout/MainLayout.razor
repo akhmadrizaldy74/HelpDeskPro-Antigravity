@@ -3,10 +3,11 @@
 @inject CustomAuthenticationStateProvider AuthStateProvider
 @inject IApiClient ApiClient
 @inject IJSRuntime JSRuntime
+@implements IDisposable
 
 <MudThemeProvider Theme="AppTheme.Default" />
 <MudPopoverProvider />
-<MudDialogProvider />
+<MudDialogProvider CloseOnEscapeKey="true" CloseButton="true" />
 <MudSnackbarProvider />
 
 <AuthorizeView>
@@ -34,6 +35,7 @@
                            class="search-input" 
                            placeholder="Cari tiket... [/]" 
                            @bind="_searchKeyword"
+                           @bind:event="oninput"
                            @onkeydown="@HandleSearchKeyDown" />
                 </div>
 
@@ -114,8 +116,9 @@
 
                 <!-- User Menu -->
                 <MudMenu AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight" Dense="true">
-                    <ActivatorContent>
-                        <div class="user-profile-btn">
+                    <ActivatorContent Context="menuContext">
+                        @* MudBlazor 9: activator kustom wajib memanggil MenuContext.ToggleAsync *@
+                        <div class="user-profile-btn" role="button" tabindex="0" @onclick="@(e => menuContext.ToggleAsync(e))">
                             <MudAvatar Color="Color.Primary" Size="Size.Small" Class="mr-2">
                                 @GetUserInitials(authContext.User.Identity?.Name)
                             </MudAvatar>
@@ -129,7 +132,7 @@
                     <ChildContent>
                         <MudMenuItem Disabled="true">
                             <MudText Typo="Typo.caption" Color="Color.Secondary">
-                                Departemen: @(authContext.User.FindFirst("departmentName")?.Value ?? "Umum")
+                                Departemen: @(authContext.User.FindFirst("department")?.Value ?? "Umum")
                             </MudText>
                         </MudMenuItem>
                         <MudDivider Class="my-1" />
@@ -226,7 +229,34 @@
 
     protected override async Task OnInitializedAsync()
     {
+        AuthStateProvider.AuthenticationStateChanged += OnAuthenticationStateChanged;
         await LoadUnreadNotifications();
+    }
+
+    private void OnAuthenticationStateChanged(Task<AuthenticationState> task)
+    {
+        _ = InvokeAsync(async () =>
+        {
+            var state = await task;
+            if (state.User.Identity?.IsAuthenticated == true)
+            {
+                await LoadUnreadNotifications();
+            }
+            else
+            {
+                _unreadCount = 0;
+                _notifications.Clear();
+                _notificationPopoverOpen = false;
+            }
+
+            StateHasChanged();
+        });
+    }
+
+    public void Dispose()
+    {
+        AuthStateProvider.AuthenticationStateChanged -= OnAuthenticationStateChanged;
+        _dotNetRef?.Dispose();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -261,6 +291,13 @@
 
     private async Task LoadUnreadNotifications()
     {
+        var state = await AuthStateProvider.GetAuthenticationStateAsync();
+        if (state.User.Identity?.IsAuthenticated != true)
+        {
+            _unreadCount = 0;
+            return;
+        }
+
         try
         {
             var res = await ApiClient.GetUnreadNotificationCountAsync();
@@ -289,21 +326,19 @@
         try
         {
             var res = await ApiClient.GetNotificationsAsync();
-            if (res?.Success == true && res.Data != null && res.Data.Count > 0)
+            if (res?.Success == true && res.Data != null)
             {
                 _notifications = res.Data.ToList();
                 _unreadCount = _notifications.Count(n => !n.IsRead);
             }
             else
             {
-                _notifications = GetFallbackNotifications();
-                _unreadCount = _notifications.Count(n => !n.IsRead);
+                _notifications = new();
             }
         }
-        catch
+        catch (HttpRequestException)
         {
-            _notifications = GetFallbackNotifications();
-            _unreadCount = _notifications.Count(n => !n.IsRead);
+            _notifications = new();
         }
     }
 
@@ -311,9 +346,16 @@
     {
         try
         {
-            await ApiClient.MarkAllNotificationsAsReadAsync();
+            var res = await ApiClient.MarkAllNotificationsAsReadAsync();
+            if (res?.Success != true)
+            {
+                return;
+            }
         }
-        catch { }
+        catch (HttpRequestException)
+        {
+            return;
+        }
 
         foreach (var n in _notifications)
         {
@@ -340,13 +382,6 @@
         Navigation.NavigateTo("/notifications");
     }
 
-    private static List<NotificationDto> GetFallbackNotifications() => new()
-    {
-        new() { Id = 1, TicketId = 1, TicketNo = "HD-2026-000001", Type = NotificationType.Escalation, Message = "Tiket HD-2026-000001 dieskalasi ke Level 1 (SLA resolusi terlampaui).", IsRead = false, CreatedAt = DateTime.UtcNow.AddMinutes(-15) },
-        new() { Id = 2, TicketId = 1, TicketNo = "HD-2026-000001", Type = NotificationType.NewComment, Message = "Agus Pratama menambahkan tanggapan pada tiket HD-2026-000001.", IsRead = false, CreatedAt = DateTime.UtcNow.AddHours(-1) },
-        new() { Id = 3, TicketId = 4, TicketNo = "HD-2026-000004", Type = NotificationType.StatusChanged, Message = "Status tiket HD-2026-000004 diubah menjadi InProgress oleh Dewi Lestari.", IsRead = true, CreatedAt = DateTime.UtcNow.AddHours(-3) }
-    };
-
     private void HandleSearchKeyDown(KeyboardEventArgs e)
     {
         if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(_searchKeyword))
@@ -364,7 +399,7 @@
     private async Task HandleLogout()
     {
         await AuthStateProvider.NotifyUserLogout();
-        Navigation.NavigateTo("/login", true);
+        Navigation.NavigateTo("/login", replace: true);
     }
 
     private static string GetUserInitials(string? fullName)

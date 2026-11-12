@@ -51,7 +51,7 @@
     else if (_ticket == null)
     {
         <div class="detail-card text-center py-8">
-            <EmptyState Message="Tiket tidak ditemukan atau Anda tidak memiliki hak akses." 
+            <EmptyState Message="@(_loadError ?? "Tiket tidak ditemukan atau Anda tidak memiliki hak akses.")" 
                         ActionText="Kembali ke daftar tiket" 
                         OnAction="@(() => Navigation.NavigateTo("/tickets"))" />
         </div>
@@ -200,11 +200,14 @@
                             Lampiran (@_ticket.Attachments.Count)
                         </MudText>
                         
-                        <label for="file-upload-input" class="upload-btn-label">
-                            <MudIcon Icon="@Icons.Material.Filled.AttachFile" Size="Size.Small" Class="mr-1" />
-                            Tambah file
-                        </label>
-                        <InputFile id="file-upload-input" OnChange="@HandleUploadAttachmentAsync" style="display: none;" />
+                        @if (_ticket.Status != TicketStatus.Closed && _ticket.Status != TicketStatus.Cancelled)
+                        {
+                            <label for="file-upload-input" class="upload-btn-label">
+                                <MudIcon Icon="@Icons.Material.Filled.AttachFile" Size="Size.Small" Class="mr-1" />
+                                Tambah file
+                            </label>
+                            <InputFile id="file-upload-input" OnChange="@HandleUploadAttachmentAsync" style="display: none;" />
+                        }
                     </div>
 
                     @if (_ticket.Attachments.Count == 0)
@@ -222,7 +225,8 @@
                                     <MudIcon Icon="@GetFileIcon(att.FileName)" Size="Size.Small" Class="mr-1 text-secondary" />
                                     <span class="attachment-name" title="@att.FileName">@att.FileName</span>
                                     <span class="attachment-size">(@FormatFileSize(att.FileSizeBytes))</span>
-                                    <a href="@GetDownloadUrl(att.Id)" target="_blank" class="download-link ml-1" title="Unduh file">
+                                    <a href="javascript:void(0)" class="download-link ml-1" title="Unduh file"
+                                       @onclick="@(() => DownloadAttachmentAsync(att))" @onclick:preventDefault="true">
                                         <MudIcon Icon="@Icons.Material.Outlined.FileDownload" Size="Size.Small" />
                                     </a>
                                 </div>
@@ -282,7 +286,23 @@
                                     <div class="timeline-history-row">
                                         <div class="timeline-history-dot"></div>
                                         <span>
-                                            <strong>@item.FieldName</strong> diubah dari <em>"@item.OldValue"</em> ke <em>"@item.NewValue"</em> oleh @(string.IsNullOrWhiteSpace(item.AuthorName) ? "Sistem" : item.AuthorName) · <RelativeTime UtcTime="@item.Timestamp" />
+                                            @if (item.FieldName == "Ticket")
+                                            {
+                                                <strong>Tiket dibuat</strong>
+                                            }
+                                            else if (string.IsNullOrWhiteSpace(item.OldValue))
+                                            {
+                                                <strong>@GetFieldLabel(item.FieldName)</strong><text> diatur ke </text><em>"@FormatHistoryValue(item.FieldName, item.NewValue)"</em>
+                                            }
+                                            else if (string.IsNullOrWhiteSpace(item.NewValue))
+                                            {
+                                                <strong>@GetFieldLabel(item.FieldName)</strong><text> dikosongkan (sebelumnya </text><em>"@FormatHistoryValue(item.FieldName, item.OldValue)"</em><text>)</text>
+                                            }
+                                            else
+                                            {
+                                                <strong>@GetFieldLabel(item.FieldName)</strong><text> diubah dari </text><em>"@FormatHistoryValue(item.FieldName, item.OldValue)"</em><text> ke </text><em>"@FormatHistoryValue(item.FieldName, item.NewValue)"</em>
+                                            }
+                                            <text> oleh @(string.IsNullOrWhiteSpace(item.AuthorName) ? "Sistem" : item.AuthorName) · </text><RelativeTime UtcTime="@item.Timestamp" />
                                         </span>
                                     </div>
                                 }
@@ -300,6 +320,7 @@
                         </MudText>
                         
                         <MudTextField @bind-Value="_newCommentBody" 
+                                      Immediate="true"
                                       Placeholder="Tulis tanggapan atau pembaruan di sini..." 
                                       Lines="3" 
                                       Variant="Variant.Outlined" 
@@ -573,6 +594,7 @@
     private TicketDetailDto? _ticket;
     private bool _isLoading = true;
     private bool _hasConflict;
+    private string? _loadError;
     private bool _isActionBusy;
     private bool _isSubmittingComment;
     private string _newCommentBody = string.Empty;
@@ -582,11 +604,28 @@
     private Guid _currentUserId;
     private List<AssigneeLookupDto> _assignees = [];
 
+    private long _loadedId;
+
     protected override async Task OnInitializedAsync()
     {
         await LoadCurrentUserAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // Muat ulang saat Id berubah (mis. klik notifikasi tiket lain dari halaman detail).
+        if (_loadedId == Id)
+        {
+            return;
+        }
+
+        _loadedId = Id;
+        _ticket = null;
         await LoadTicketDetailsAsync();
-        await LoadAssigneesAsync();
+        if (CanAssign())
+        {
+            await LoadAssigneesAsync();
+        }
     }
 
     private async Task LoadCurrentUserAsync()
@@ -628,6 +667,7 @@
     {
         _isLoading = true;
         _hasConflict = false;
+        _loadError = null;
         StateHasChanged();
 
         try
@@ -639,13 +679,14 @@
             }
             else
             {
-                // Fallback for development preview
-                _ticket = GetSampleTicketDetail(Id);
+                _ticket = null;
+                _loadError = res?.Errors.FirstOrDefault();
             }
         }
-        catch
+        catch (HttpRequestException)
         {
-            _ticket = GetSampleTicketDetail(Id);
+            _ticket = null;
+            _loadError = "Tidak dapat terhubung ke server API.";
         }
         finally
         {
@@ -805,7 +846,7 @@
         if (result is { Canceled: false, Data: TicketDetailDto updated })
         {
             _ticket = updated;
-            Snackbar.Add($"Status tiket berhasil diubah ke {updated.Status}.", Severity.Success);
+            Snackbar.Add($"Status tiket berhasil diubah ke {GetStatusText(updated.Status)}.", Severity.Success);
         }
     }
 
@@ -928,7 +969,26 @@
         catch { }
     }
 
-    private string GetDownloadUrl(long attachmentId) => $"/api/tickets/{Id}/attachments/{attachmentId}";
+    private async Task DownloadAttachmentAsync(TicketAttachmentDto attachment)
+    {
+        try
+        {
+            var res = await ApiClient.DownloadAttachmentAsync(Id, attachment.Id);
+            if (res?.Success != true || res.Data == null)
+            {
+                Snackbar.Add(res?.Errors.FirstOrDefault() ?? "Gagal mengunduh file.", Severity.Error);
+                return;
+            }
+
+            using var memory = new MemoryStream(res.Data.Content);
+            using var streamRef = new DotNetStreamReference(memory);
+            await JSRuntime.InvokeVoidAsync("downloadFileFromStream", attachment.FileName, res.Data.ContentType, streamRef);
+        }
+        catch (HttpRequestException)
+        {
+            Snackbar.Add("Tidak dapat terhubung ke server API.", Severity.Error);
+        }
+    }
 
     private static string FormatFileSize(long bytes)
     {
@@ -950,6 +1010,39 @@
         };
     }
 
+    private static string GetFieldLabel(string? fieldName) => fieldName switch
+    {
+        "Status" => "Status",
+        "Assignee" => "Penanggung jawab",
+        "Priority" => "Prioritas",
+        "Category" => "Kategori",
+        "Title" => "Judul",
+        "Description" => "Deskripsi",
+        "Rating" => "Rating",
+        _ => fieldName ?? "Data"
+    };
+
+    private static string FormatHistoryValue(string? fieldName, string? value)
+    {
+        if (fieldName == "Status" && Enum.TryParse<TicketStatus>(value, out var status))
+        {
+            return GetStatusText(status);
+        }
+
+        return value ?? string.Empty;
+    }
+
+    private static string GetStatusText(TicketStatus status) => status switch
+    {
+        TicketStatus.Open => "Open",
+        TicketStatus.InProgress => "In Progress",
+        TicketStatus.Pending => "Pending",
+        TicketStatus.Resolved => "Resolved",
+        TicketStatus.Closed => "Closed",
+        TicketStatus.Cancelled => "Cancelled",
+        _ => status.ToString()
+    };
+
     private static string GetUserInitials(string? fullName)
     {
         if (string.IsNullOrWhiteSpace(fullName)) return "U";
@@ -959,72 +1052,6 @@
             return $"{char.ToUpperInvariant(parts[0][0])}{char.ToUpperInvariant(parts[1][0])}";
         }
         return char.ToUpperInvariant(fullName[0]).ToString();
-    }
-
-    private static TicketDetailDto GetSampleTicketDetail(long id)
-    {
-        var now = DateTime.UtcNow;
-        return new TicketDetailDto
-        {
-            Id = id,
-            TicketNo = $"HD-2026-{id:D6}",
-            Title = "Printer lantai 3 paper jam terus",
-            Description = "Setiap kali mencetak lebih dari 5 lembar kertas pada tray 2, kertas selalu macet dan lampu indikator merah berkedip terus. Mohon bantuan pengecekan roller atau sensor kertas.",
-            CategoryId = 1,
-            CategoryName = "Hardware",
-            Priority = TicketPriority.High,
-            Status = TicketStatus.InProgress,
-            RequesterId = Guid.NewGuid(),
-            RequesterName = "Budi Santoso",
-            AssigneeId = Guid.Parse("44444444-4444-4444-4444-444444444444"),
-            AssigneeName = "Agus Pratama",
-            ResponseDueAt = now.AddHours(-1),
-            FirstRespondedAt = now.AddHours(-1).AddMinutes(15),
-            ResolutionDueAt = now.AddMinutes(-45),
-            IsSlaBreached = true,
-            EscalationLevel = 1,
-            CreatedAt = now.AddHours(-3),
-            Attachments =
-            [
-                new()
-                {
-                    Id = 1,
-                    FileName = "foto_printer_macet.jpg",
-                    ContentType = "image/jpeg",
-                    FileSizeBytes = 450 * 1024,
-                    UploadedByName = "Budi Santoso",
-                    UploadedAt = now.AddHours(-3)
-                }
-            ],
-            Timeline =
-            [
-                new()
-                {
-                    Type = TimelineItemType.Comment,
-                    Timestamp = now.AddHours(-3),
-                    AuthorName = "Budi Santoso",
-                    CommentBody = "Mohon bantuannya segera karena dokumen invoice akhir bulan perlu dicetak hari ini.",
-                    IsInternal = false
-                },
-                new()
-                {
-                    Type = TimelineItemType.History,
-                    Timestamp = now.AddHours(-2).AddMinutes(30),
-                    AuthorName = "Agus Pratama",
-                    FieldName = "Status",
-                    OldValue = "Open",
-                    NewValue = "InProgress"
-                },
-                new()
-                {
-                    Type = TimelineItemType.Comment,
-                    Timestamp = now.AddHours(-2),
-                    AuthorName = "Agus Pratama",
-                    CommentBody = "Sudah dilakukan pengecekan awal, kemungkinan roller karet penarik kertas aus. Sedang mengambil suku cadang di gudang IT.",
-                    IsInternal = true
-                }
-            ]
-        };
     }
 }
 

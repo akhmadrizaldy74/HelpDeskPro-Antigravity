@@ -31,6 +31,13 @@ html, body {
     outline-offset: 1px !important;
 }
 
+/* Judul yang difokuskan otomatis saat navigasi (FocusOnNavigate, tabindex=-1)
+   tetap dapat dibaca screen reader, tetapi tanpa kotak outline. */
+[tabindex="-1"]:focus,
+[tabindex="-1"]:focus-visible {
+    outline: none !important;
+}
+
 /* Hover transitions <= 150ms */
 button, a, .mud-nav-link {
     transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease !important;
@@ -736,4 +743,170 @@ button, a, .mud-nav-link {
 
 .filter-panel {
     padding: 12px 16px !important;
+}
+
+/* ==========================================================================
+   Responsif (tablet & ponsel)
+   Selector diawali "body" agar menang atas blok <style> per-halaman.
+   ========================================================================== */
+
+/* Header halaman (judul + tombol aksi) boleh turun baris */
+body .d-flex:has(> div > .page-main-heading) {
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+body .page-main-heading {
+    word-break: break-word;
+}
+
+/* Nomor tiket (HD-2026-000001) tidak dipecah ke beberapa baris */
+body .ticket-no-link,
+body .ticket-no-btn,
+body .ticket-no-badge,
+body .ticket-table td:first-child,
+body .data-table td.font-mono {
+    white-space: nowrap;
+}
+
+/* Tablet: < 960px (drawer otomatis menjadi menu geser) */
+@media (max-width: 959.98px) {
+    body .ticket-detail-layout {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    body .ticket-detail-sidebar {
+        width: 100%;
+        order: -1; /* status & SLA tampil lebih dulu */
+    }
+
+    body .content-wrapper {
+        padding: 16px;
+    }
+}
+
+/* Ponsel: < 600px */
+@media (max-width: 599.98px) {
+    body .content-wrapper {
+        padding: 12px;
+    }
+
+    /* Top bar: sisakan judul, lonceng, dan avatar */
+    body .global-search-container,
+    body .user-info,
+    body .user-profile-btn .mud-icon-root {
+        display: none !important;
+    }
+
+    body .top-app-bar .page-title {
+        font-size: 15px !important;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        min-width: 0;
+        flex: 1 1 auto;
+    }
+
+    /* Header halaman: judul di atas, aksi di bawah selebar layar */
+    body .d-flex:has(> div > .page-main-heading) {
+        flex-direction: column;
+        align-items: stretch !important;
+    }
+
+    body .d-flex:has(> div > .page-main-heading) > div:last-child {
+        flex-wrap: wrap;
+    }
+
+    body .page-main-heading {
+        font-size: 18px !important;
+    }
+
+    /* Tabel: geser horizontal di dalam kartu, kolom tidak gepeng */
+    body .table-responsive,
+    body .table-scroll-wrapper {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    body .data-table {
+        min-width: 560px;
+    }
+
+    /* Daftar tiket: sembunyikan kolom pelengkap (Kategori, Assignee, Diperbarui) */
+    body .ticket-table th:nth-child(3),
+    body .ticket-table td:nth-child(3),
+    body .ticket-table th:nth-child(6),
+    body .ticket-table td:nth-child(6),
+    body .ticket-table th:nth-child(8),
+    body .ticket-table td:nth-child(8) {
+        display: none;
+    }
+
+    body .ticket-table th,
+    body .ticket-table td {
+        width: auto !important;
+    }
+
+    /* Filter daftar tiket: satu kolom penuh */
+    body .filter-controls-row > * ,
+    body .filter-search-box,
+    body .filter-select-box {
+        width: 100% !important;
+        flex: 1 1 100% !important;
+    }
+
+    body .filter-action-box {
+        width: 100%;
+        justify-content: space-between;
+    }
+
+    body .table-pagination-bar {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+
+    /* Detail tiket: tombol aksi turun baris & melebar */
+    body .detail-header-card,
+    body .detail-card {
+        padding: 12px 14px;
+    }
+
+    body .action-buttons-group {
+        flex-wrap: wrap;
+        width: 100%;
+    }
+
+    body .action-buttons-group .mud-button-root {
+        flex: 1 1 auto;
+    }
+
+    /* Nomor tiket tidak dipecah per baris */
+    body .ticket-table td:first-child,
+    body .data-table td:first-child,
+    body .ticket-no-btn {
+        white-space: nowrap;
+    }
+
+    body .ticket-table {
+        min-width: 600px;
+    }
+
+    /* Form buat tiket: kategori & prioritas bertumpuk */
+    body .row-two-fields {
+        display: flex !important;
+        flex-direction: column;
+        gap: 16px;
+    }
+
+    body .row-two-fields > .field-col {
+        width: 100% !important;
+    }
+
+    /* Dialog memakai hampir seluruh lebar layar */
+    body .mud-dialog {
+        margin: 8px !important;
+        max-width: calc(100vw - 16px) !important;
+    }
 }

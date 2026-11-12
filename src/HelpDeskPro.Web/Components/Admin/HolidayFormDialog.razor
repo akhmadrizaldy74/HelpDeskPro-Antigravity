@@ -1,4 +1,4 @@
-namespace HelpDeskPro.Web.Components.Admin;
+@namespace HelpDeskPro.Web.Components.Admin
 
 @inject ISnackbar Snackbar
 @inject IApiClient ApiClient
@@ -17,7 +17,7 @@ namespace HelpDeskPro.Web.Components.Admin;
                 </MudAlert>
             }
 
-            <MudDatePicker Label="Tanggal libur" 
+            <MudDatePicker Label="Tanggal libur" Editable="true" Placeholder="dd/MM/yyyy" 
                            @bind-Date="_date" 
                            Required="true" 
                            RequiredError="Tanggal libur wajib diisi."

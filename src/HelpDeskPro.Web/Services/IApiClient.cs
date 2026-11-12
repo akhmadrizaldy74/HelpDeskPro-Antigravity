@@ -43,11 +43,13 @@ public interface IApiClient
     Task<ApiResponse<TicketDetailDto>?> ChangeTicketStatusAsync(long id, TicketStatus status, string? reason, byte[]? rowVersion, CancellationToken cancellationToken = default);
     Task<ApiResponse<TicketCommentDto>?> AddCommentAsync(long id, string body, bool isInternal, CancellationToken cancellationToken = default);
     Task<ApiResponse<TicketAttachmentDto>?> UploadAttachmentAsync(long id, Stream stream, string fileName, string contentType, long length, CancellationToken cancellationToken = default);
+    Task<ApiResponse<AttachmentFile>?> DownloadAttachmentAsync(long ticketId, long attachmentId, CancellationToken cancellationToken = default);
     Task<ApiResponse<TicketDetailDto>?> RateTicketAsync(long id, int rating, string? comment, CancellationToken cancellationToken = default);
     Task<ApiResponse<EscalationDto>?> EscalateTicketAsync(long id, string note, CancellationToken cancellationToken = default);
 
     // Dashboard & Escalation
     Task<ApiResponse<DashboardSummaryDto>?> GetDashboardSummaryAsync(int periodDays = 30, CancellationToken cancellationToken = default);
+    Task<ApiResponse<IReadOnlyList<TicketTrendPointDto>>?> GetTicketTrendAsync(int days = 7, CancellationToken cancellationToken = default);
     Task<ApiResponse<IReadOnlyList<AgentWorkloadDto>>?> GetAgentWorkloadAsync(int? days = null, CancellationToken cancellationToken = default);
     Task<ApiResponse<IReadOnlyList<PendingEscalationDto>>?> GetPendingEscalationsAsync(CancellationToken cancellationToken = default);
     Task<ApiResponse<EscalationDto>?> AcknowledgeEscalationAsync(long id, CancellationToken cancellationToken = default);
@@ -84,3 +86,5 @@ public interface IApiClient
     Task<ApiResponse<HolidayDto>?> UpdateHolidayAsync(int id, UpdateHolidayCommand command, CancellationToken cancellationToken = default);
     Task<ApiResponse<string>?> DeleteHolidayAsync(int id, CancellationToken cancellationToken = default);
 }
+
+public sealed record AttachmentFile(string FileName, string ContentType, byte[] Content);

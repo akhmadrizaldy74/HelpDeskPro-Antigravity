@@ -25,9 +25,8 @@ using HelpDeskPro.Application.Features.Tickets.Commands.CreateTicket;
 using HelpDeskPro.Application.Features.Tickets.Models;
 using HelpDeskPro.Application.Features.Tickets.Queries.GetTickets;
 using HelpDeskPro.Domain.Enums;
-using Microsoft.AspNetCore.Mvc;
 
-public class ApiClient : IApiClient
+public sealed class ApiClient : IApiClient, IDisposable
 {
     private readonly HttpClient _httpClient;
     private static readonly JsonSerializerOptions _jsonOptions = new() { PropertyNameCaseInsensitive = true };
@@ -36,6 +35,8 @@ public class ApiClient : IApiClient
     {
         _httpClient = httpClient;
     }
+
+    public void Dispose() => _httpClient.Dispose();
 
     public async Task<ApiResponse<AuthResponseDto>?> LoginAsync(string email, string password, CancellationToken cancellationToken = default)
     {
@@ -246,6 +247,24 @@ public class ApiClient : IApiClient
         return await response.Content.ReadFromJsonAsync<ApiResponse<TicketAttachmentDto>>(_jsonOptions, cancellationToken);
     }
 
+    public async Task<ApiResponse<AttachmentFile>?> DownloadAttachmentAsync(long ticketId, long attachmentId, CancellationToken cancellationToken = default)
+    {
+        using var response = await _httpClient.GetAsync($"api/tickets/{ticketId}/attachments/{attachmentId}", cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var error = await ExtractErrorMessageAsync(response, cancellationToken);
+            return ApiResponse.Failure<AttachmentFile>(error);
+        }
+
+        var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+        var contentType = response.Content.Headers.ContentType?.MediaType ?? "application/octet-stream";
+        var fileName = response.Content.Headers.ContentDisposition?.FileNameStar
+            ?? response.Content.Headers.ContentDisposition?.FileName?.Trim('"')
+            ?? $"lampiran-{attachmentId}";
+
+        return ApiResponse.Ok(new AttachmentFile(fileName, contentType, bytes));
+    }
+
     public async Task<ApiResponse<TicketDetailDto>?> RateTicketAsync(long id, int rating, string? comment, CancellationToken cancellationToken = default)
     {
         var payload = new { Rating = rating, Comment = comment };
@@ -283,6 +302,18 @@ public class ApiClient : IApiClient
         }
 
         return await response.Content.ReadFromJsonAsync<ApiResponse<DashboardSummaryDto>>(_jsonOptions, cancellationToken);
+    }
+
+    public async Task<ApiResponse<IReadOnlyList<TicketTrendPointDto>>?> GetTicketTrendAsync(int days = 7, CancellationToken cancellationToken = default)
+    {
+        var response = await _httpClient.GetAsync($"api/dashboard/ticket-trend?days={days}", cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var error = await ExtractErrorMessageAsync(response, cancellationToken);
+            return ApiResponse.Failure<IReadOnlyList<TicketTrendPointDto>>(error);
+        }
+
+        return await response.Content.ReadFromJsonAsync<ApiResponse<IReadOnlyList<TicketTrendPointDto>>>(_jsonOptions, cancellationToken);
     }
 
     public async Task<ApiResponse<IReadOnlyList<AgentWorkloadDto>>?> GetAgentWorkloadAsync(int? days = null, CancellationToken cancellationToken = default)
@@ -613,53 +644,92 @@ public class ApiClient : IApiClient
 
     private static async Task<string> ExtractErrorMessageAsync(HttpResponseMessage response, CancellationToken cancellationToken)
     {
-        if (response.StatusCode == System.Net.HttpStatusCode.Conflict)
-        {
-            return "Tiket sudah diubah pengguna lain, muat ulang halaman.";
-        }
-
+        string? content;
         try
         {
-            var content = await response.Content.ReadAsStringAsync(cancellationToken);
-            if (string.IsNullOrWhiteSpace(content))
-            {
-                return $"Permintaan gagal dengan status {response.StatusCode}.";
-            }
+            content = await response.Content.ReadAsStringAsync(cancellationToken);
+        }
+        catch (HttpRequestException)
+        {
+            content = null;
+        }
 
-            var problem = JsonSerializer.Deserialize<ProblemDetails>(content, _jsonOptions);
-            if (!string.IsNullOrWhiteSpace(problem?.Detail))
+        if (!string.IsNullOrWhiteSpace(content))
+        {
+            try
             {
-                return problem.Detail;
-            }
-
-            if (problem?.Extensions.TryGetValue("errors", out var errorsObj) == true && errorsObj is JsonElement element && element.ValueKind == JsonValueKind.Object)
-            {
-                var messages = new List<string>();
-                foreach (var prop in element.EnumerateObject())
+                using var doc = JsonDocument.Parse(content);
+                var root = doc.RootElement;
+                if (root.ValueKind == JsonValueKind.Object)
                 {
-                    if (prop.Value.ValueKind == JsonValueKind.Array)
+                    // 1. Pesan validasi per-field (lebih spesifik daripada "detail" generik).
+                    if (root.TryGetProperty("errors", out var errors))
                     {
-                        foreach (var item in prop.Value.EnumerateArray())
+                        var messages = new List<string>();
+                        if (errors.ValueKind == JsonValueKind.Object)
                         {
-                            var s = item.GetString();
-                            if (!string.IsNullOrWhiteSpace(s))
+                            foreach (var prop in errors.EnumerateObject())
                             {
-                                messages.Add(s);
+                                CollectStrings(prop.Value, messages);
                             }
                         }
+                        else
+                        {
+                            CollectStrings(errors, messages);
+                        }
+
+                        if (messages.Count > 0)
+                        {
+                            return string.Join(" ", messages.Distinct());
+                        }
+                    }
+
+                    // 2. ProblemDetails.detail dari GlobalExceptionMiddleware.
+                    if (root.TryGetProperty("detail", out var detail) && detail.ValueKind == JsonValueKind.String &&
+                        !string.IsNullOrWhiteSpace(detail.GetString()))
+                    {
+                        return detail.GetString()!;
+                    }
+
+                    if (root.TryGetProperty("title", out var title) && title.ValueKind == JsonValueKind.String &&
+                        !string.IsNullOrWhiteSpace(title.GetString()))
+                    {
+                        return title.GetString()!;
                     }
                 }
-                if (messages.Count > 0)
-                {
-                    return string.Join("; ", messages);
-                }
             }
-
-            return problem?.Title ?? $"Terjadi kesalahan ({response.StatusCode}).";
+            catch (JsonException)
+            {
+                // Bukan JSON; gunakan pesan berdasarkan status code di bawah.
+            }
         }
-        catch
+
+        return response.StatusCode switch
         {
-            return $"Terjadi kesalahan komunikasi dengan server ({response.StatusCode}).";
+            System.Net.HttpStatusCode.Unauthorized => "Sesi Anda telah berakhir. Silakan masuk kembali.",
+            System.Net.HttpStatusCode.Forbidden => "Anda tidak memiliki akses untuk melakukan aksi ini.",
+            System.Net.HttpStatusCode.NotFound => "Data tidak ditemukan.",
+            System.Net.HttpStatusCode.Conflict => "Data sudah diubah pengguna lain, muat ulang halaman.",
+            _ => $"Terjadi kesalahan komunikasi dengan server ({(int)response.StatusCode})."
+        };
+    }
+
+    private static void CollectStrings(JsonElement element, List<string> messages)
+    {
+        if (element.ValueKind == JsonValueKind.String)
+        {
+            var value = element.GetString();
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                messages.Add(value);
+            }
+        }
+        else if (element.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in element.EnumerateArray())
+            {
+                CollectStrings(item, messages);
+            }
         }
     }
 }
